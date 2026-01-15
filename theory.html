@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Theory - EPA Local Median Smoothing</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+    
+<nav class="navbar">
+    <div class="nav-container">
+        <a href="index.html" class="nav-logo">EPA Smoothing</a>
+        <button class="nav-toggle" onclick="toggleNav()">&#9776;</button>
+        <ul class="nav-menu" id="nav-menu">
+            <li><a href="index.html">Home</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="theory.html">Theory</a></li>
+            <li><a href="api.html">API</a></li>
+            <li><a href="code.html">Code</a></li>
+            <li><a href="examples.html">Examples</a></li>
+        </ul>
+    </div>
+</nav>
+
+
+    <div class="container">
+        <div class="section">
+            <h2>Mathematical Theory</h2>
+
+            <h3>1. The Smoothing Problem</h3>
+            <p>Given noisy observations \((x_i, y_i)\) where:</p>
+            <div class="formula">
+                \[ y_i = f(x_i) + \varepsilon_i \]
+            </div>
+            <p>We want to estimate the unknown function \(f(x)\) at any point \(x_0\).</p>
+
+            <h3>2. Kernel Smoothing Approach</h3>
+            <p>Kernel smoothers estimate \(f(x_0)\) using a weighted average of nearby points:</p>
+            <div class="formula">
+                \[ \hat{f}(x_0) = \frac{\sum_i K\left(\frac{x_i - x_0}{h}\right) y_i}{\sum_i K\left(\frac{x_i - x_0}{h}\right)} \]
+            </div>
+            <p>where \(K(\cdot)\) is the kernel function and \(h\) is the bandwidth.</p>
+
+            <h3>3. Epanechnikov Kernel</h3>
+            <p>The Epanechnikov kernel is defined as:</p>
+            <div class="formula">
+                \[ K(u) = \frac{3}{4}(1 - u^2) \cdot \mathbf{1}_{|u| \leq 1} \]
+            </div>
+            <p><strong>Why Epanechnikov?</strong> It is the optimal kernel in the sense of minimizing the asymptotic mean integrated squared error (AMISE) among all second-order kernels.</p>
+
+            <p><strong>Properties:</strong></p>
+            <ul style="margin-left: 2rem; margin-bottom: 1rem;">
+                <li>Bounded support: \(K(u) = 0\) for \(|u| > 1\)</li>
+                <li>Maximum at center: \(K(0) = 0.75\)</li>
+                <li>Integrates to 1: \(\int K(u) du = 1\)</li>
+                <li>Second moment: \(\int u^2 K(u) du = 0.2\)</li>
+            </ul>
+
+            <h3>4. Weighted Median vs Weighted Mean</h3>
+            <p>The standard Nadaraya-Watson estimator uses the <strong>weighted mean</strong>:</p>
+            <div class="formula">
+                \[ \hat{f}_{\text{mean}}(x_0) = \frac{\sum_i w_i y_i}{\sum_i w_i} \]
+            </div>
+
+            <p>Our approach uses the <strong>weighted median</strong>:</p>
+            <div class="formula">
+                \[ \hat{f}_{\text{median}}(x_0) = \text{argmin}_m \sum_i w_i |y_i - m| \]
+            </div>
+
+            <p><strong>Robustness Comparison:</strong></p>
+            <table>
+                <tr>
+                    <th>Property</th>
+                    <th>Weighted Mean</th>
+                    <th>Weighted Median</th>
+                </tr>
+                <tr>
+                    <td>Breakdown Point</td>
+                    <td class="highlight-red">0%</td>
+                    <td class="highlight-green">50%</td>
+                </tr>
+                <tr>
+                    <td>Influence Function</td>
+                    <td>Unbounded</td>
+                    <td>Bounded</td>
+                </tr>
+                <tr>
+                    <td>Effect of Single Outlier</td>
+                    <td>Can shift estimate arbitrarily</td>
+                    <td>Limited effect</td>
+                </tr>
+            </table>
+
+            <h3>5. Bandwidth Selection</h3>
+            <p>Silverman's rule of thumb provides automatic bandwidth selection:</p>
+            <div class="formula">
+                \[ h = 0.9 \cdot \min\left(\hat{\sigma}, \frac{\text{IQR}}{1.34}\right) \cdot n^{-1/5} \]
+            </div>
+            <p>where \(\hat{\sigma}\) is the sample standard deviation and IQR is the interquartile range.</p>
+
+            <h3>6. Bias-Variance Tradeoff</h3>
+            <ul style="margin-left: 2rem;">
+                <li><strong>Small \(h\):</strong> Low bias, high variance (wiggly fit)</li>
+                <li><strong>Large \(h\):</strong> High bias, low variance (oversmoothed)</li>
+            </ul>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>EPA Local Median Smoothing | <a href="https://github.com/Digital-AI-Finance/epa_smoothing">GitHub</a></p>
+    </footer>
+
+    <script>
+        function toggleNav() {
+            document.getElementById('nav-menu').classList.toggle('active');
+        }
+    </script>
+</body>
+</html>

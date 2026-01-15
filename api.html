@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Documentation - EPA Local Median Smoothing</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    
+<nav class="navbar">
+    <div class="nav-container">
+        <a href="index.html" class="nav-logo">EPA Smoothing</a>
+        <button class="nav-toggle" onclick="toggleNav()">&#9776;</button>
+        <ul class="nav-menu" id="nav-menu">
+            <li><a href="index.html">Home</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="theory.html">Theory</a></li>
+            <li><a href="api.html">API</a></li>
+            <li><a href="code.html">Code</a></li>
+            <li><a href="examples.html">Examples</a></li>
+        </ul>
+    </div>
+</nav>
+
+
+    <div class="container">
+        <div class="section">
+            <h2>API Documentation</h2>
+
+            <h3>Installation</h3>
+            <pre><code>pip install numpy
+# Then copy epa_smoothing.py to your project</code></pre>
+
+            <h3>Core Functions</h3>
+
+            <div class="example-box">
+                <h4><code>epanechnikov_kernel(u)</code></h4>
+                <p>Compute Epanechnikov kernel weights.</p>
+                <table>
+                    <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                    <tr><td><code>u</code></td><td>np.ndarray</td><td>Scaled distances (x - x0) / bandwidth</td></tr>
+                </table>
+                <p><strong>Returns:</strong> np.ndarray - Kernel weights (0 for |u| > 1)</p>
+            </div>
+
+            <div class="example-box">
+                <h4><code>weighted_median(values, weights)</code></h4>
+                <p>Compute weighted median of values.</p>
+                <table>
+                    <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                    <tr><td><code>values</code></td><td>np.ndarray</td><td>Data values</td></tr>
+                    <tr><td><code>weights</code></td><td>np.ndarray</td><td>Non-negative weights</td></tr>
+                </table>
+                <p><strong>Returns:</strong> float - Weighted median value</p>
+            </div>
+
+            <div class="example-box">
+                <h4><code>silverman_bandwidth(x)</code></h4>
+                <p>Automatic bandwidth selection using Silverman's rule.</p>
+                <table>
+                    <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                    <tr><td><code>x</code></td><td>np.ndarray</td><td>Input x-coordinates</td></tr>
+                </table>
+                <p><strong>Returns:</strong> float - Recommended bandwidth</p>
+            </div>
+
+            <div class="example-box">
+                <h4><code>epa_local_median(x, y, bandwidth)</code></h4>
+                <p>EPA kernel-weighted local median smoother.</p>
+                <table>
+                    <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                    <tr><td><code>x</code></td><td>np.ndarray</td><td>Input x-coordinates</td></tr>
+                    <tr><td><code>y</code></td><td>np.ndarray</td><td>Input y-values (noisy)</td></tr>
+                    <tr><td><code>bandwidth</code></td><td>float</td><td>Kernel bandwidth (controls smoothness)</td></tr>
+                </table>
+                <p><strong>Returns:</strong> np.ndarray - Smoothed y-values</p>
+            </div>
+
+            <div class="example-box">
+                <h4><code>epa_local_mean(x, y, bandwidth)</code></h4>
+                <p>EPA kernel-weighted local mean smoother (Nadaraya-Watson).</p>
+                <table>
+                    <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                    <tr><td><code>x</code></td><td>np.ndarray</td><td>Input x-coordinates</td></tr>
+                    <tr><td><code>y</code></td><td>np.ndarray</td><td>Input y-values</td></tr>
+                    <tr><td><code>bandwidth</code></td><td>float</td><td>Kernel bandwidth</td></tr>
+                </table>
+                <p><strong>Returns:</strong> np.ndarray - Smoothed y-values</p>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>EPA Local Median Smoothing | <a href="https://github.com/Digital-AI-Finance/epa_smoothing">GitHub</a></p>
+    </footer>
+
+    <script>
+        function toggleNav() {
+            document.getElementById('nav-menu').classList.toggle('active');
+        }
+    </script>
+</body>
+</html>

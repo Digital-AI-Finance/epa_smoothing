@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPA Local Median Smoothing</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    
+<nav class="navbar">
+    <div class="nav-container">
+        <a href="index.html" class="nav-logo">EPA Smoothing</a>
+        <button class="nav-toggle" onclick="toggleNav()">&#9776;</button>
+        <ul class="nav-menu" id="nav-menu">
+            <li><a href="index.html">Home</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="theory.html">Theory</a></li>
+            <li><a href="api.html">API</a></li>
+            <li><a href="code.html">Code</a></li>
+            <li><a href="examples.html">Examples</a></li>
+        </ul>
+    </div>
+</nav>
+
+
+    <section class="hero">
+        <h1>EPA Kernel-Weighted Local Median Smoothing</h1>
+        <p>Robust nonparametric curve smoothing that resists outliers using the Epanechnikov kernel and weighted median</p>
+        <a href="dashboard.html" class="btn btn-primary">Try Interactive Dashboard</a>
+    </section>
+
+    <div class="container">
+        <div class="features">
+            <div class="feature-card">
+                <h3>Robust to Outliers</h3>
+                <p>The weighted median ignores outlier magnitude - only position in sorted order matters. Achieves up to 40% lower error than mean-based smoothers on contaminated data.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Optimal Kernel</h3>
+                <p>The Epanechnikov kernel is optimal in the mean squared error sense among all second-order kernels. Provides efficient, bounded support weighting.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Interactive Visualization</h3>
+                <p>Explore the algorithm with real-time parameter controls, animations, and side-by-side comparisons of median vs mean smoothing.</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Quick Navigation</h2>
+            <div class="nav-cards">
+                <a href="dashboard.html" class="nav-card">
+                    <h4>Interactive Dashboard</h4>
+                    <p>Try the smoother with adjustable parameters</p>
+                </a>
+                <a href="theory.html" class="nav-card">
+                    <h4>Mathematical Theory</h4>
+                    <p>Kernel functions, weighted median, bandwidth</p>
+                </a>
+                <a href="api.html" class="nav-card">
+                    <h4>API Documentation</h4>
+                    <p>Function signatures and parameters</p>
+                </a>
+                <a href="code.html" class="nav-card">
+                    <h4>Source Code</h4>
+                    <p>Complete Python implementation</p>
+                </a>
+                <a href="examples.html" class="nav-card">
+                    <h4>Usage Examples</h4>
+                    <p>Code snippets and use cases</p>
+                </a>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Key Results</h2>
+            <table>
+                <tr>
+                    <th>Metric</th>
+                    <th>EPA Median</th>
+                    <th>EPA Mean</th>
+                    <th>Improvement</th>
+                </tr>
+                <tr>
+                    <td>RMSE (8% outliers)</td>
+                    <td class="highlight-green">0.108</td>
+                    <td class="highlight-red">0.184</td>
+                    <td>41% better</td>
+                </tr>
+                <tr>
+                    <td>MAE (8% outliers)</td>
+                    <td class="highlight-green">0.082</td>
+                    <td class="highlight-red">0.127</td>
+                    <td>35% better</td>
+                </tr>
+                <tr>
+                    <td>Breakdown Point</td>
+                    <td class="highlight-green">50%</td>
+                    <td class="highlight-red">0%</td>
+                    <td>Infinitely more robust</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>EPA Local Median Smoothing | <a href="https://github.com/Digital-AI-Finance/epa_smoothing">GitHub</a></p>
+    </footer>
+
+    <script>
+        function toggleNav() {
+            document.getElementById('nav-menu').classList.toggle('active');
+        }
+    </script>
+</body>
+</html>
