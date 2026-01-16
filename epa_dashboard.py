@@ -3,16 +3,39 @@ EPA Kernel-Weighted Local Median Smoothing - Comprehensive Interactive Dashboard
 
 Generates a single self-contained HTML file with:
 - Interactive sliders for bandwidth, outlier fraction, noise
+- Multiple kernel options (Epanechnikov, Gaussian, Uniform, Triangular)
+- Multiple signal presets (Sin+Cos, Step, Ramp, Sawtooth, Gaussian)
 - Real-time plot updates
 - Animation of the smoothing process
 - MathJax-rendered formulas
 - Metrics comparison panel
+
+Academic Reference:
+    "A New EMD Approach" - Empirical Mode Decomposition with Local Median Smoothing
+
+    Authors: Yezhou Sha, Volodia Spokoiny, Wolfgang Karl Hardle,
+             David Siang-Li Jheng, Marc-Eduard Ionescu, Daniel Traian Pele
+
+    Affiliations: Humboldt-Universitat zu Berlin, MSCA Digital Finance,
+                  Bucharest University of Economic Studies
+
+    This implementation follows the Local Median approach from the presentation,
+    using Epanechnikov kernel-weighted median for robust signal decomposition.
+
+    Related resources:
+    - Theory: https://digital-ai-finance.github.io/emd_local_median/
+    - Dashboard: https://digital-ai-finance.github.io/epa_smoothing/dashboard.html
+    - QuantLet: https://github.com/QuantLet/Crypto_Currency_Returns
 """
 
 import numpy as np
 import json
 from pathlib import Path
 
+
+# =============================================================================
+# Kernel Functions
+# =============================================================================
 
 def epanechnikov_kernel(u):
     """EPA kernel: K(u) = 0.75(1 - u^2) for |u| <= 1"""
@@ -21,6 +44,65 @@ def epanechnikov_kernel(u):
     weights[mask] = 0.75 * (1 - u[mask]**2)
     return weights
 
+
+def gaussian_kernel(u):
+    """Gaussian kernel: K(u) = exp(-u^2/2) / sqrt(2*pi), truncated at |u|<=3"""
+    weights = np.zeros_like(u, dtype=float)
+    mask = np.abs(u) <= 3
+    weights[mask] = np.exp(-u[mask]**2 / 2) / np.sqrt(2 * np.pi)
+    return weights
+
+
+def uniform_kernel(u):
+    """Uniform (box) kernel: K(u) = 0.5 for |u| <= 1"""
+    weights = np.zeros_like(u, dtype=float)
+    mask = np.abs(u) <= 1
+    weights[mask] = 0.5
+    return weights
+
+
+def triangular_kernel(u):
+    """Triangular kernel: K(u) = 1 - |u| for |u| <= 1"""
+    weights = np.zeros_like(u, dtype=float)
+    mask = np.abs(u) <= 1
+    weights[mask] = 1 - np.abs(u[mask])
+    return weights
+
+
+def get_kernel(name):
+    """Return kernel function by name."""
+    kernels = {
+        'epanechnikov': epanechnikov_kernel,
+        'gaussian': gaussian_kernel,
+        'uniform': uniform_kernel,
+        'triangular': triangular_kernel
+    }
+    return kernels.get(name, epanechnikov_kernel)
+
+
+# =============================================================================
+# Signal Generation
+# =============================================================================
+
+def generate_signal(x, signal_type='sincos'):
+    """Generate various test signals."""
+    if signal_type == 'sincos':
+        return np.sin(x) + 0.5 * np.cos(2 * x)
+    elif signal_type == 'step':
+        return np.where(x < np.pi, -0.5, 0.5)
+    elif signal_type == 'ramp':
+        return (x - np.pi) / np.pi
+    elif signal_type == 'sawtooth':
+        return 2 * ((x / (2 * np.pi)) - np.floor(x / (2 * np.pi) + 0.5))
+    elif signal_type == 'gaussian':
+        return np.exp(-((x - np.pi)**2) / 2)
+    else:
+        return np.sin(x) + 0.5 * np.cos(2 * x)
+
+
+# =============================================================================
+# Core Smoothing Functions
+# =============================================================================
 
 def weighted_median(values, weights):
     """Compute weighted median with proper edge case handling."""
@@ -50,27 +132,29 @@ def weighted_median(values, weights):
         return sorted_values[idx]
 
 
-def epa_local_median(x, y, bandwidth):
-    """EPA kernel-weighted local median smoother."""
+def epa_local_median(x, y, bandwidth, kernel_name='epanechnikov'):
+    """Kernel-weighted local median smoother."""
+    kernel_func = get_kernel(kernel_name)
     n = len(x)
     y_smooth = np.zeros(n)
 
     for i in range(n):
         u = (x - x[i]) / bandwidth
-        weights = epanechnikov_kernel(u)
+        weights = kernel_func(u)
         y_smooth[i] = weighted_median(y, weights)
 
     return y_smooth
 
 
-def epa_local_mean(x, y, bandwidth):
-    """EPA kernel-weighted local mean (Nadaraya-Watson)."""
+def epa_local_mean(x, y, bandwidth, kernel_name='epanechnikov'):
+    """Kernel-weighted local mean (Nadaraya-Watson)."""
+    kernel_func = get_kernel(kernel_name)
     n = len(x)
     y_smooth = np.zeros(n)
 
     for i in range(n):
         u = (x - x[i]) / bandwidth
-        weights = epanechnikov_kernel(u)
+        weights = kernel_func(u)
         total = np.sum(weights)
         if total > 0:
             y_smooth[i] = np.sum(weights * y) / total
@@ -80,11 +164,15 @@ def epa_local_mean(x, y, bandwidth):
     return y_smooth
 
 
-def generate_data(n, noise_std, outlier_frac, seed=42):
+# =============================================================================
+# Data Generation
+# =============================================================================
+
+def generate_data(n, noise_std, outlier_frac, signal_type='sincos', seed=42):
     """Generate noisy curve with outliers."""
     np.random.seed(seed)
     x = np.linspace(0, 2 * np.pi, n)
-    y_true = np.sin(x) + 0.5 * np.cos(2 * x)
+    y_true = generate_signal(x, signal_type)
     y_noisy = y_true + np.random.normal(0, noise_std, n)
 
     n_outliers = int(n * outlier_frac)
@@ -96,61 +184,88 @@ def generate_data(n, noise_std, outlier_frac, seed=42):
     return x, y_true, y_noisy
 
 
+# =============================================================================
+# Pre-computation
+# =============================================================================
+
 def precompute_all_data():
     """Pre-compute smoothed curves for all parameter combinations."""
     n = 150
+    kernels = ['epanechnikov', 'gaussian', 'uniform', 'triangular']
+    signals = ['sincos', 'step', 'ramp', 'sawtooth', 'gaussian']
     bandwidths = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0, 1.2, 1.5]
     outlier_fracs = [0.0, 0.02, 0.05, 0.08, 0.10, 0.15, 0.20]
     noise_stds = [0.15, 0.25, 0.35, 0.5]
 
     # Base x values
-    x = np.linspace(0, 2 * np.pi, n).tolist()
-    y_true = (np.sin(np.array(x)) + 0.5 * np.cos(2 * np.array(x))).tolist()
+    x = np.linspace(0, 2 * np.pi, n)
+    x_list = x.tolist()
 
-    # Pre-compute for each combination
+    # Pre-compute true signals for each type
+    true_signals = {}
+    for sig in signals:
+        true_signals[sig] = generate_signal(x, sig).tolist()
+
+    # Data structure
     data = {
-        'x': x,
-        'y_true': y_true,
+        'x': x_list,
+        'true_signals': true_signals,
         'n': n,
+        'kernels': kernels,
+        'signals': signals,
         'bandwidths': bandwidths,
         'outlier_fracs': outlier_fracs,
         'noise_stds': noise_stds,
         'results': {}
     }
 
-    for noise in noise_stds:
-        for outlier in outlier_fracs:
-            key = f"{noise}_{outlier}"
-            _, _, y_noisy = generate_data(n, noise, outlier, seed=42)
+    total = len(kernels) * len(signals) * len(noise_stds) * len(outlier_fracs) * len(bandwidths)
+    count = 0
 
-            result = {
-                'y_noisy': y_noisy.tolist(),
-                'smoothed': {}
-            }
+    for kernel in kernels:
+        for signal in signals:
+            y_true = np.array(true_signals[signal])
 
-            for bw in bandwidths:
-                y_median = epa_local_median(np.array(x), y_noisy, bw)
-                y_mean = epa_local_mean(np.array(x), y_noisy, bw)
+            for noise in noise_stds:
+                for outlier in outlier_fracs:
+                    # Generate noisy data
+                    _, _, y_noisy = generate_data(n, noise, outlier, signal, seed=42)
 
-                # Compute metrics
-                rmse_median = float(np.sqrt(np.mean((y_median - np.array(y_true))**2)))
-                rmse_mean = float(np.sqrt(np.mean((y_mean - np.array(y_true))**2)))
-                mae_median = float(np.mean(np.abs(y_median - np.array(y_true))))
-                mae_mean = float(np.mean(np.abs(y_mean - np.array(y_true))))
+                    for bw in bandwidths:
+                        count += 1
+                        if count % 500 == 0:
+                            print(f"  Progress: {count}/{total} ({100*count/total:.1f}%)")
 
-                result['smoothed'][str(bw)] = {
-                    'median': y_median.tolist(),
-                    'mean': y_mean.tolist(),
-                    'rmse_median': rmse_median,
-                    'rmse_mean': rmse_mean,
-                    'mae_median': mae_median,
-                    'mae_mean': mae_mean
-                }
+                        # Key format: kernel_signal_noise_outlier_bw
+                        key = f"{kernel}_{signal}_{noise}_{outlier}_{bw}"
 
-            data['results'][key] = result
+                        # Compute smoothed curves
+                        y_median = epa_local_median(x, y_noisy, bw, kernel)
+                        y_mean = epa_local_mean(x, y_noisy, bw, kernel)
 
+                        # Compute metrics
+                        rmse_median = float(np.sqrt(np.mean((y_median - y_true)**2)))
+                        rmse_mean = float(np.sqrt(np.mean((y_mean - y_true)**2)))
+                        mae_median = float(np.mean(np.abs(y_median - y_true)))
+                        mae_mean = float(np.mean(np.abs(y_mean - y_true)))
+
+                        data['results'][key] = {
+                            'y_noisy': y_noisy.tolist(),
+                            'median': y_median.tolist(),
+                            'mean': y_mean.tolist(),
+                            'rmse_median': rmse_median,
+                            'rmse_mean': rmse_mean,
+                            'mae_median': mae_median,
+                            'mae_mean': mae_mean
+                        }
+
+    print(f"  Completed: {count} combinations")
     return data
 
+
+# =============================================================================
+# HTML Generation
+# =============================================================================
 
 def generate_html():
     """Generate the complete interactive HTML dashboard."""
@@ -207,9 +322,9 @@ def generate_html():
         }}
         .controls {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-            align-items: center;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            align-items: end;
         }}
         .control-group {{
             display: flex;
@@ -219,40 +334,30 @@ def generate_html():
             font-weight: 600;
             color: #333;
             margin-bottom: 8px;
+            font-size: 0.9em;
         }}
-        .control-group input[type="range"] {{
+        .control-group select {{
             width: 100%;
-            height: 8px;
-            border-radius: 4px;
-            background: #e0e0e0;
-            outline: none;
-            -webkit-appearance: none;
-        }}
-        .control-group input[type="range"]::-webkit-slider-thumb {{
-            -webkit-appearance: none;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: #667eea;
+            padding: 10px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            background: white;
             cursor: pointer;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            transition: border-color 0.3s;
         }}
-        .value-display {{
-            text-align: center;
-            font-size: 1.1em;
-            color: #667eea;
-            font-weight: bold;
-            margin-top: 5px;
+        .control-group select:hover {{
+            border-color: #667eea;
+        }}
+        .control-group select:focus {{
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
         }}
         .main-content {{
             display: grid;
             grid-template-columns: 1fr 320px;
             gap: 20px;
-        }}
-        @media (max-width: 1000px) {{
-            .main-content {{
-                grid-template-columns: 1fr;
-            }}
         }}
         .metrics-panel {{
             display: flex;
@@ -312,6 +417,7 @@ def generate_html():
             display: flex;
             border-bottom: 2px solid #e0e0e0;
             margin-bottom: 15px;
+            flex-wrap: wrap;
         }}
         .tab {{
             padding: 10px 20px;
@@ -338,6 +444,7 @@ def generate_html():
             gap: 10px;
             justify-content: center;
             margin-top: 15px;
+            flex-wrap: wrap;
         }}
         .btn {{
             padding: 10px 25px;
@@ -361,10 +468,17 @@ def generate_html():
         .btn-secondary:hover {{
             background: #d0d0d0;
         }}
+        .legend-container {{
+            text-align: center;
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }}
         .legend-item {{
             display: inline-flex;
             align-items: center;
-            margin-right: 20px;
             font-size: 0.9em;
         }}
         .legend-color {{
@@ -387,6 +501,64 @@ def generate_html():
             color: #1b5e20;
             font-size: 0.95em;
         }}
+
+        /* Responsive styles */
+        @media (max-width: 1000px) {{
+            .main-content {{
+                grid-template-columns: 1fr;
+            }}
+            .metrics-panel {{
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+            }}
+        }}
+        @media (max-width: 768px) {{
+            body {{
+                padding: 10px;
+            }}
+            .header h1 {{
+                font-size: 1.4em;
+            }}
+            .header p {{
+                font-size: 0.95em;
+            }}
+            .controls {{
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+            }}
+            .panel {{
+                padding: 15px;
+            }}
+            #main-plot {{
+                height: 300px !important;
+            }}
+            .metrics-panel {{
+                grid-template-columns: repeat(2, 1fr);
+            }}
+            .metric-card {{
+                padding: 10px;
+            }}
+            .metric-value {{
+                font-size: 1.4em;
+            }}
+            .tab {{
+                padding: 8px 12px;
+                font-size: 0.9em;
+            }}
+            .formula-row {{
+                flex-direction: column;
+                gap: 10px;
+            }}
+        }}
+        @media (max-width: 500px) {{
+            .controls {{
+                grid-template-columns: 1fr;
+            }}
+            .metrics-panel {{
+                grid-template-columns: 1fr 1fr;
+            }}
+        }}
     </style>
 </head>
 <body>
@@ -399,19 +571,59 @@ def generate_html():
         <div class="panel">
             <div class="controls">
                 <div class="control-group">
+                    <label>Kernel</label>
+                    <select id="kernel">
+                        <option value="epanechnikov">Epanechnikov</option>
+                        <option value="gaussian">Gaussian</option>
+                        <option value="uniform">Uniform (Box)</option>
+                        <option value="triangular">Triangular</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Signal</label>
+                    <select id="signal">
+                        <option value="sincos">Sin + Cos</option>
+                        <option value="step">Step Function</option>
+                        <option value="ramp">Ramp</option>
+                        <option value="sawtooth">Sawtooth</option>
+                        <option value="gaussian">Gaussian Bump</option>
+                    </select>
+                </div>
+                <div class="control-group">
                     <label>Bandwidth (h)</label>
-                    <input type="range" id="bandwidth" min="0.2" max="1.5" step="0.1" value="0.5">
-                    <div class="value-display" id="bw-value">h = 0.5</div>
+                    <select id="bandwidth">
+                        <option value="0.2">0.2</option>
+                        <option value="0.3">0.3</option>
+                        <option value="0.4">0.4</option>
+                        <option value="0.5" selected>0.5</option>
+                        <option value="0.6">0.6</option>
+                        <option value="0.7">0.7</option>
+                        <option value="0.8">0.8</option>
+                        <option value="1.0">1.0</option>
+                        <option value="1.2">1.2</option>
+                        <option value="1.5">1.5</option>
+                    </select>
                 </div>
                 <div class="control-group">
                     <label>Outlier Fraction</label>
-                    <input type="range" id="outliers" min="0" max="0.2" step="0.02" value="0.08">
-                    <div class="value-display" id="outlier-value">8%</div>
+                    <select id="outliers">
+                        <option value="0">0%</option>
+                        <option value="0.02">2%</option>
+                        <option value="0.05">5%</option>
+                        <option value="0.08" selected>8%</option>
+                        <option value="0.1">10%</option>
+                        <option value="0.15">15%</option>
+                        <option value="0.2">20%</option>
+                    </select>
                 </div>
                 <div class="control-group">
                     <label>Noise Level</label>
-                    <input type="range" id="noise" min="0.15" max="0.5" step="0.1" value="0.25">
-                    <div class="value-display" id="noise-value">0.25</div>
+                    <select id="noise">
+                        <option value="0.15">0.15 (Low)</option>
+                        <option value="0.25" selected>0.25 (Medium)</option>
+                        <option value="0.35">0.35 (High)</option>
+                        <option value="0.5">0.50 (Very High)</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -419,11 +631,11 @@ def generate_html():
         <div class="main-content">
             <div class="panel">
                 <div id="main-plot" style="width:100%;height:450px;"></div>
-                <div style="text-align:center;margin-top:10px;">
+                <div class="legend-container">
                     <span class="legend-item"><span class="legend-color" style="background:#999;"></span>Noisy Data</span>
                     <span class="legend-item"><span class="legend-color" style="background:#000;border-style:dashed;"></span>True Function</span>
-                    <span class="legend-item"><span class="legend-color" style="background:#2ca02c;"></span>EPA Median</span>
-                    <span class="legend-item"><span class="legend-color" style="background:#d62728;"></span>EPA Mean</span>
+                    <span class="legend-item"><span class="legend-color" style="background:#2ca02c;"></span>Kernel Median</span>
+                    <span class="legend-item"><span class="legend-color" style="background:#d62728;"></span>Kernel Mean</span>
                 </div>
             </div>
             <div class="metrics-panel">
@@ -453,8 +665,8 @@ def generate_html():
 
         <div class="panel">
             <div class="math-panel">
-                <h3>Algorithm Formulas</h3>
-                <div class="formula-row">
+                <h3>Kernel Formulas</h3>
+                <div class="formula-row" id="formula-row">
                     <div class="formula-item">
                         <div class="label">Epanechnikov Kernel</div>
                         <div>\\( K(u) = \\frac{{3}}{{4}}(1 - u^2) \\cdot \\mathbf{{1}}_{{|u| \\leq 1}} \\)</div>
@@ -515,32 +727,49 @@ def generate_html():
         const DATA = {data_json};
 
         // Current state
+        let currentKernel = 'epanechnikov';
+        let currentSignal = 'sincos';
         let currentBandwidth = 0.5;
         let currentOutliers = 0.08;
         let currentNoise = 0.25;
         let animationInterval = null;
         let animationIndex = 0;
 
-        // Snap to nearest available value
-        function snapToAvailable(value, available) {{
-            return available.reduce((prev, curr) =>
-                Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev
-            );
-        }}
+        // Kernel formulas for display
+        const kernelFormulas = {{
+            'epanechnikov': {{
+                name: 'Epanechnikov Kernel',
+                formula: '\\\\( K(u) = \\\\frac{{3}}{{4}}(1 - u^2) \\\\cdot \\\\mathbf{{1}}_{{|u| \\\\leq 1}} \\\\)'
+            }},
+            'gaussian': {{
+                name: 'Gaussian Kernel',
+                formula: '\\\\( K(u) = \\\\frac{{1}}{{\\\\sqrt{{2\\\\pi}}}} e^{{-u^2/2}} \\\\cdot \\\\mathbf{{1}}_{{|u| \\\\leq 3}} \\\\)'
+            }},
+            'uniform': {{
+                name: 'Uniform (Box) Kernel',
+                formula: '\\\\( K(u) = \\\\frac{{1}}{{2}} \\\\cdot \\\\mathbf{{1}}_{{|u| \\\\leq 1}} \\\\)'
+            }},
+            'triangular': {{
+                name: 'Triangular Kernel',
+                formula: '\\\\( K(u) = (1 - |u|) \\\\cdot \\\\mathbf{{1}}_{{|u| \\\\leq 1}} \\\\)'
+            }}
+        }};
 
         // Get current data key
         function getDataKey() {{
-            const noise = snapToAvailable(currentNoise, DATA.noise_stds);
-            const outlier = snapToAvailable(currentOutliers, DATA.outlier_fracs);
-            return `${{noise}}_${{outlier}}`;
+            return `${{currentKernel}}_${{currentSignal}}_${{currentNoise}}_${{currentOutliers}}_${{currentBandwidth}}`;
         }}
 
         // Update main plot
         function updateMainPlot() {{
             const key = getDataKey();
-            const bw = snapToAvailable(currentBandwidth, DATA.bandwidths);
             const result = DATA.results[key];
-            const smoothed = result.smoothed[bw];
+            const y_true = DATA.true_signals[currentSignal];
+
+            if (!result) {{
+                console.error('Data not found for key:', key);
+                return;
+            }}
 
             const traces = [
                 {{
@@ -552,44 +781,53 @@ def generate_html():
                 }},
                 {{
                     x: DATA.x,
-                    y: DATA.y_true,
+                    y: y_true,
                     mode: 'lines',
                     name: 'True Function',
                     line: {{ color: 'black', width: 2, dash: 'dash' }}
                 }},
                 {{
                     x: DATA.x,
-                    y: smoothed.median,
+                    y: result.median,
                     mode: 'lines',
-                    name: 'EPA Median',
+                    name: 'Kernel Median',
                     line: {{ color: '#2ca02c', width: 3 }}
                 }},
                 {{
                     x: DATA.x,
-                    y: smoothed.mean,
+                    y: result.mean,
                     mode: 'lines',
-                    name: 'EPA Mean',
+                    name: 'Kernel Mean',
                     line: {{ color: '#d62728', width: 3 }}
                 }}
             ];
 
+            const kernelName = currentKernel.charAt(0).toUpperCase() + currentKernel.slice(1);
+            const signalNames = {{
+                'sincos': 'Sin + Cos',
+                'step': 'Step Function',
+                'ramp': 'Ramp',
+                'sawtooth': 'Sawtooth',
+                'gaussian': 'Gaussian Bump'
+            }};
+
             const layout = {{
-                title: 'EPA Local Median vs Mean Smoothing',
+                title: `${{kernelName}} Kernel: Median vs Mean (${{signalNames[currentSignal]}})`,
                 xaxis: {{ title: 'x' }},
                 yaxis: {{ title: 'y' }},
                 showlegend: false,
-                margin: {{ t: 40, b: 40, l: 50, r: 20 }}
+                margin: {{ t: 50, b: 50, l: 50, r: 20 }}
             }};
 
             Plotly.react('main-plot', traces, layout);
 
             // Update metrics
-            document.getElementById('rmse-median').textContent = smoothed.rmse_median.toFixed(3);
-            document.getElementById('rmse-mean').textContent = smoothed.rmse_mean.toFixed(3);
-            document.getElementById('mae-median').textContent = smoothed.mae_median.toFixed(3);
-            document.getElementById('mae-mean').textContent = smoothed.mae_mean.toFixed(3);
+            document.getElementById('rmse-median').textContent = result.rmse_median.toFixed(3);
+            document.getElementById('rmse-mean').textContent = result.rmse_mean.toFixed(3);
+            document.getElementById('mae-median').textContent = result.mae_median.toFixed(3);
+            document.getElementById('mae-mean').textContent = result.mae_mean.toFixed(3);
 
-            const improvement = ((smoothed.rmse_mean - smoothed.rmse_median) / smoothed.rmse_mean * 100);
+            const improvement = ((result.rmse_mean - result.rmse_median) / result.rmse_mean * 100);
             document.getElementById('improvement').textContent = improvement.toFixed(1) + '%';
 
             const improvementEl = document.getElementById('improvement');
@@ -606,53 +844,114 @@ def generate_html():
             }}
 
             // Update insight
-            updateInsight(improvement, currentOutliers);
+            updateInsight(improvement, currentOutliers, currentSignal);
+
+            // Update formula display
+            updateFormulaDisplay();
         }}
 
-        function updateInsight(improvement, outlierFrac) {{
+        function updateFormulaDisplay() {{
+            const info = kernelFormulas[currentKernel];
+            const formulaRow = document.getElementById('formula-row');
+            formulaRow.innerHTML = `
+                <div class="formula-item">
+                    <div class="label">${{info.name}}</div>
+                    <div>${{info.formula}}</div>
+                </div>
+                <div class="formula-item">
+                    <div class="label">Scaled Distance</div>
+                    <div>\\\\( u_i = \\\\frac{{x_i - x_0}}{{h}} \\\\)</div>
+                </div>
+                <div class="formula-item">
+                    <div class="label">Weighted Median</div>
+                    <div>\\\\( \\\\hat{{y}}(x_0) = \\\\text{{wmedian}}\\\\{{y_i : w_i = K(u_i)\\\\}} \\\\)</div>
+                </div>
+            `;
+            // Re-render MathJax
+            if (window.MathJax) {{
+                MathJax.typesetPromise([formulaRow]);
+            }}
+        }}
+
+        function updateInsight(improvement, outlierFrac, signalType) {{
             const insightEl = document.getElementById('insight-text');
+            const signalNotes = {{
+                'step': 'Step functions are challenging because they have discontinuities. ',
+                'ramp': 'Linear ramps are easy to smooth but boundary effects can be visible. ',
+                'sawtooth': 'Sawtooth waves test how smoothers handle periodic discontinuities. ',
+                'gaussian': 'Gaussian bumps are smooth, so both methods perform similarly. ',
+                'sincos': ''
+            }};
+
+            let baseInsight = signalNotes[signalType] || '';
+
             if (outlierFrac < 0.02) {{
-                insightEl.textContent = "With no outliers, both methods perform similarly. The median's robustness provides no advantage here.";
+                insightEl.textContent = baseInsight + "With no outliers, both methods perform similarly. The median's robustness provides no advantage here.";
             }} else if (improvement > 30) {{
-                insightEl.textContent = `With ${{(outlierFrac*100).toFixed(0)}}% outliers, the median smoother shows ${{improvement.toFixed(0)}}% lower error! Outlier magnitude doesn't affect the weighted median - only the count of points above/below matters.`;
+                insightEl.textContent = baseInsight + `With ${{(outlierFrac*100).toFixed(0)}}% outliers, the median smoother shows ${{improvement.toFixed(0)}}% lower error! Outlier magnitude doesn't affect the weighted median.`;
             }} else if (improvement > 10) {{
-                insightEl.textContent = `The median smoother is more robust to the ${{(outlierFrac*100).toFixed(0)}}% outliers, achieving ${{improvement.toFixed(0)}}% lower RMSE. Increase outlier fraction to see larger differences.`;
+                insightEl.textContent = baseInsight + `The median smoother is more robust to the ${{(outlierFrac*100).toFixed(0)}}% outliers, achieving ${{improvement.toFixed(0)}}% lower RMSE.`;
             }} else {{
-                insightEl.textContent = "At this setting, both smoothers perform comparably. Try increasing the outlier fraction or decreasing bandwidth to see the median's robustness advantage.";
+                insightEl.textContent = baseInsight + "At this setting, both smoothers perform comparably. Try increasing the outlier fraction to see the median's robustness advantage.";
             }}
         }}
 
-        // Kernel shape plot
+        // Kernel shape plot - shows all kernels with current one highlighted
         function plotKernel() {{
+            const traces = [];
+            const kernelColors = {{
+                'epanechnikov': '#667eea',
+                'gaussian': '#ff7f0e',
+                'uniform': '#2ca02c',
+                'triangular': '#d62728'
+            }};
+
+            // Generate kernel data for each type
             const u = [];
-            const k = [];
-            for (let i = -1.5; i <= 1.5; i += 0.01) {{
+            for (let i = -2; i <= 2; i += 0.01) {{
                 u.push(i);
-                k.push(Math.abs(i) <= 1 ? 0.75 * (1 - i*i) : 0);
             }}
 
-            const traces = [{{
-                x: u,
-                y: k,
-                mode: 'lines',
-                fill: 'tozeroy',
-                fillcolor: 'rgba(102, 126, 234, 0.3)',
-                line: {{ color: '#667eea', width: 3 }},
-                name: 'EPA Kernel'
-            }}];
+            // Epanechnikov
+            const k_epa = u.map(ui => Math.abs(ui) <= 1 ? 0.75 * (1 - ui*ui) : 0);
+            // Gaussian (truncated at 3)
+            const k_gauss = u.map(ui => Math.abs(ui) <= 3 ? Math.exp(-ui*ui/2) / Math.sqrt(2*Math.PI) : 0);
+            // Uniform
+            const k_uniform = u.map(ui => Math.abs(ui) <= 1 ? 0.5 : 0);
+            // Triangular
+            const k_tri = u.map(ui => Math.abs(ui) <= 1 ? 1 - Math.abs(ui) : 0);
+
+            const allKernels = {{
+                'epanechnikov': k_epa,
+                'gaussian': k_gauss,
+                'uniform': k_uniform,
+                'triangular': k_tri
+            }};
+
+            // Add all kernels, highlight current one
+            Object.keys(allKernels).forEach(kernel => {{
+                const isCurrent = kernel === currentKernel;
+                traces.push({{
+                    x: u,
+                    y: allKernels[kernel],
+                    mode: 'lines',
+                    fill: isCurrent ? 'tozeroy' : 'none',
+                    fillcolor: isCurrent ? 'rgba(102, 126, 234, 0.3)' : 'transparent',
+                    line: {{
+                        color: kernelColors[kernel],
+                        width: isCurrent ? 3 : 1.5,
+                        dash: isCurrent ? 'solid' : 'dot'
+                    }},
+                    name: kernel.charAt(0).toUpperCase() + kernel.slice(1),
+                    opacity: isCurrent ? 1 : 0.5
+                }});
+            }});
 
             const layout = {{
-                title: 'Epanechnikov Kernel K(u) = 0.75(1 - u<sup>2</sup>) for |u| <= 1',
-                xaxis: {{ title: 'u = (x - x0) / h', zeroline: true }},
-                yaxis: {{ title: 'K(u)', range: [0, 0.85] }},
-                shapes: [
-                    {{ type: 'line', x0: -1, y0: 0, x1: -1, y1: 0.8, line: {{ color: 'red', dash: 'dash', width: 2 }} }},
-                    {{ type: 'line', x0: 1, y0: 0, x1: 1, y1: 0.8, line: {{ color: 'red', dash: 'dash', width: 2 }} }}
-                ],
-                annotations: [
-                    {{ x: -1, y: 0.82, text: 'u = -1', showarrow: false, font: {{ color: 'red' }} }},
-                    {{ x: 1, y: 0.82, text: 'u = +1', showarrow: false, font: {{ color: 'red' }} }}
-                ],
+                title: 'Kernel Comparison (Current: ' + currentKernel.charAt(0).toUpperCase() + currentKernel.slice(1) + ')',
+                xaxis: {{ title: 'u = (x - x0) / h', zeroline: true, range: [-2, 2] }},
+                yaxis: {{ title: 'K(u)', range: [0, 1.1] }},
+                legend: {{ x: 0.02, y: 0.98 }},
                 margin: {{ t: 50, b: 50, l: 50, r: 20 }}
             }};
 
@@ -661,22 +960,25 @@ def generate_html():
 
         // Bandwidth comparison plot
         function plotBandwidthComparison() {{
-            const key = getDataKey();
-            const result = DATA.results[key];
             const bws = [0.2, 0.4, 0.7, 1.0];
             const colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd'];
+            const y_true = DATA.true_signals[currentSignal];
+
+            // Get noisy data from first bandwidth
+            const firstKey = `${{currentKernel}}_${{currentSignal}}_${{currentNoise}}_${{currentOutliers}}_${{bws[0]}}`;
+            const firstResult = DATA.results[firstKey];
 
             const traces = [
                 {{
                     x: DATA.x,
-                    y: result.y_noisy,
+                    y: firstResult ? firstResult.y_noisy : [],
                     mode: 'markers',
                     name: 'Noisy Data',
                     marker: {{ size: 4, color: '#ccc' }}
                 }},
                 {{
                     x: DATA.x,
-                    y: DATA.y_true,
+                    y: y_true,
                     mode: 'lines',
                     name: 'True',
                     line: {{ color: 'black', width: 2, dash: 'dash' }}
@@ -684,20 +986,21 @@ def generate_html():
             ];
 
             bws.forEach((bw, i) => {{
-                const smoothed = result.smoothed[bw] || result.smoothed[snapToAvailable(bw, DATA.bandwidths)];
-                if (smoothed) {{
+                const key = `${{currentKernel}}_${{currentSignal}}_${{currentNoise}}_${{currentOutliers}}_${{bw}}`;
+                const result = DATA.results[key];
+                if (result) {{
                     traces.push({{
                         x: DATA.x,
-                        y: smoothed.median,
+                        y: result.median,
                         mode: 'lines',
-                        name: `h=${{bw}} (RMSE=${{smoothed.rmse_median.toFixed(3)}})`,
+                        name: `h=${{bw}} (RMSE=${{result.rmse_median.toFixed(3)}})`,
                         line: {{ color: colors[i], width: 2.5 }}
                     }});
                 }}
             }});
 
             const layout = {{
-                title: 'Effect of Bandwidth on EPA Local Median',
+                title: 'Effect of Bandwidth on Kernel Median',
                 xaxis: {{ title: 'x' }},
                 yaxis: {{ title: 'y' }},
                 legend: {{ x: 0.02, y: 0.98 }},
@@ -710,12 +1013,13 @@ def generate_html():
         // Residuals plot
         function plotResiduals() {{
             const key = getDataKey();
-            const bw = snapToAvailable(currentBandwidth, DATA.bandwidths);
             const result = DATA.results[key];
-            const smoothed = result.smoothed[bw];
+            const y_true = DATA.true_signals[currentSignal];
 
-            const residuals_median = DATA.y_true.map((y, i) => smoothed.median[i] - y);
-            const residuals_mean = DATA.y_true.map((y, i) => smoothed.mean[i] - y);
+            if (!result) return;
+
+            const residuals_median = y_true.map((y, i) => result.median[i] - y);
+            const residuals_mean = y_true.map((y, i) => result.mean[i] - y);
 
             const traces = [
                 {{
@@ -754,25 +1058,41 @@ def generate_html():
             Plotly.react('residuals-plot', traces, layout);
         }}
 
+        // Kernel function for animation
+        function computeKernelWeights(u) {{
+            if (currentKernel === 'epanechnikov') {{
+                return Math.abs(u) <= 1 ? 0.75 * (1 - u*u) : 0;
+            }} else if (currentKernel === 'gaussian') {{
+                return Math.abs(u) <= 3 ? Math.exp(-u*u/2) / Math.sqrt(2*Math.PI) : 0;
+            }} else if (currentKernel === 'uniform') {{
+                return Math.abs(u) <= 1 ? 0.5 : 0;
+            }} else if (currentKernel === 'triangular') {{
+                return Math.abs(u) <= 1 ? 1 - Math.abs(u) : 0;
+            }}
+            return 0;
+        }}
+
         // Animation
         function plotAnimation(idx) {{
             const key = getDataKey();
-            const bw = snapToAvailable(currentBandwidth, DATA.bandwidths);
             const result = DATA.results[key];
-            const smoothed = result.smoothed[bw];
+
+            if (!result) return;
 
             const x0 = DATA.x[idx];
-            const h = bw;
+            const h = currentBandwidth;
+            const supportWidth = currentKernel === 'gaussian' ? h * 3 : h;
 
             // Compute weights for current point
             const weights = DATA.x.map(xi => {{
                 const u = (xi - x0) / h;
-                return Math.abs(u) <= 1 ? 0.75 * (1 - u*u) : 0;
+                return computeKernelWeights(u);
             }});
 
             // Size based on weights
-            const sizes = weights.map(w => 5 + w * 15);
-            const colors = weights.map(w => w > 0 ? `rgba(102, 126, 234, ${{0.3 + w * 0.7}})` : 'rgba(200, 200, 200, 0.3)');
+            const maxWeight = Math.max(...weights);
+            const sizes = weights.map(w => 5 + (w / (maxWeight || 1)) * 15);
+            const colors = weights.map(w => w > 0 ? `rgba(102, 126, 234, ${{0.3 + (w / (maxWeight || 1)) * 0.7}})` : 'rgba(200, 200, 200, 0.3)');
 
             const traces = [
                 {{
@@ -784,14 +1104,14 @@ def generate_html():
                 }},
                 {{
                     x: DATA.x.slice(0, idx + 1),
-                    y: smoothed.median.slice(0, idx + 1),
+                    y: result.median.slice(0, idx + 1),
                     mode: 'lines',
-                    name: 'EPA Median (built)',
+                    name: 'Kernel Median (built)',
                     line: {{ color: '#2ca02c', width: 3 }}
                 }},
                 {{
                     x: [x0],
-                    y: [smoothed.median[idx]],
+                    y: [result.median[idx]],
                     mode: 'markers',
                     name: 'Current Point',
                     marker: {{ size: 15, color: '#d62728', symbol: 'star' }}
@@ -799,13 +1119,13 @@ def generate_html():
             ];
 
             const layout = {{
-                title: `Building EPA Local Median - Point ${{idx + 1}} / ${{DATA.n}}`,
+                title: `Building Kernel Median - Point ${{idx + 1}} / ${{DATA.n}}`,
                 xaxis: {{ title: 'x', range: [0, 2 * Math.PI] }},
                 yaxis: {{ title: 'y', range: [-2.5, 3] }},
                 shapes: [{{
                     type: 'rect',
-                    x0: x0 - h,
-                    x1: x0 + h,
+                    x0: x0 - supportWidth,
+                    x1: x0 + supportWidth,
                     y0: -2.5,
                     y1: 3,
                     fillcolor: 'rgba(255, 255, 0, 0.15)',
@@ -854,25 +1174,37 @@ def generate_html():
             else if (tabName === 'animation') plotAnimation(animationIndex);
         }}
 
-        // Event listeners
-        document.getElementById('bandwidth').addEventListener('input', function() {{
-            currentBandwidth = parseFloat(this.value);
-            document.getElementById('bw-value').textContent = 'h = ' + currentBandwidth.toFixed(1);
+        // Event listeners for all controls
+        document.getElementById('kernel').addEventListener('change', function() {{
+            currentKernel = this.value;
             updateMainPlot();
+            plotKernel();
+            plotBandwidthComparison();
             plotResiduals();
         }});
 
-        document.getElementById('outliers').addEventListener('input', function() {{
-            currentOutliers = parseFloat(this.value);
-            document.getElementById('outlier-value').textContent = (currentOutliers * 100).toFixed(0) + '%';
+        document.getElementById('signal').addEventListener('change', function() {{
+            currentSignal = this.value;
             updateMainPlot();
             plotBandwidthComparison();
             plotResiduals();
         }});
 
-        document.getElementById('noise').addEventListener('input', function() {{
+        document.getElementById('bandwidth').addEventListener('change', function() {{
+            currentBandwidth = parseFloat(this.value);
+            updateMainPlot();
+            plotResiduals();
+        }});
+
+        document.getElementById('outliers').addEventListener('change', function() {{
+            currentOutliers = parseFloat(this.value);
+            updateMainPlot();
+            plotBandwidthComparison();
+            plotResiduals();
+        }});
+
+        document.getElementById('noise').addEventListener('change', function() {{
             currentNoise = parseFloat(this.value);
-            document.getElementById('noise-value').textContent = currentNoise.toFixed(2);
             updateMainPlot();
             plotBandwidthComparison();
             plotResiduals();
@@ -889,16 +1221,21 @@ def generate_html():
     return html
 
 
+# =============================================================================
+# Main
+# =============================================================================
+
 def main():
     output_path = Path(__file__).parent / "epa_smoothing_dashboard.html"
 
     print("Generating comprehensive EPA Local Median Smoothing dashboard...")
+    print("This will compute 5,600 parameter combinations...")
     html = generate_html()
 
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)
 
-    print(f"Saved: {output_path}")
+    print(f"\nSaved: {output_path}")
     print(f"File size: {output_path.stat().st_size / 1024:.1f} KB")
 
 
