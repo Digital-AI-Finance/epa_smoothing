@@ -187,77 +187,54 @@
     </div>
 </nav>
 
-    <section class="hero">
-        <h1>Interactive Sifting Demo</h1>
-        <p>Explore EMD decomposition with adjustable parameters and real-time visualization</p>
-    </section>
-
-    <div class="container">
-        <div class="section">
-            <h2>Bandwidth Parameters</h2>
-            <div class="control-item" style="margin-bottom: 0.5rem;">
-                <label>Initial Bandwidth h<sub>1</sub></label>
-                <input type="range" id="h1-slider" min="0.01" max="0.5" step="0.01" value="0.1">
-                <span id="h1-value" class="value-display">0.10</span>
+    <div class="container" style="padding-top: 0.5rem;">
+        <div class="section" style="padding: 0.3rem 0;">
+            <div class="k-slider-container control-item" style="margin-bottom: 0.3rem;">
+                <label>Iteration k (show trends 1..k)</label>
+                <input type="range" id="k-slider" min="1" max="100" step="1" value="100">
+                <span id="k-value" class="value-display">100</span>
             </div>
-            <div class="control-item">
-                <label>Decay Factor r (h<sub>k+1</sub> = h<sub>k</sub> / r)</label>
-                <input type="range" id="decay-slider" min="1.05" max="3.0" step="0.05" value="1.414">
-                <span id="decay-value" class="value-display">1.41</span>
-            </div>
+            <div id="chart-main" style="width: 100%; height: 350px;"></div>
         </div>
 
-        <div class="section">
-            <h2>Other Controls</h2>
-            <div class="controls-grid">
+        <div class="section" style="padding: 0.3rem 0;">
+            <div class="controls-grid" style="gap: 0.3rem;">
+                <div class="control-item">
+                    <label>h<sub>1</sub> (initial)</label>
+                    <input type="range" id="h1-slider" min="0.01" max="0.5" step="0.01" value="0.1">
+                    <span id="h1-value" class="value-display">0.10</span>
+                </div>
+                <div class="control-item">
+                    <label>r (decay)</label>
+                    <input type="range" id="decay-slider" min="1.05" max="3.0" step="0.05" value="1.414">
+                    <span id="decay-value" class="value-display">1.41</span>
+                </div>
                 <div class="control-item">
                     <label>Iterations</label>
                     <input type="range" id="iter-slider" min="1" max="100" step="1" value="100">
                     <span id="iter-value" class="value-display">100</span>
                 </div>
                 <div class="control-item">
-                    <label>Noise Level</label>
+                    <label>Noise</label>
                     <input type="range" id="noise-slider" min="0" max="0.5" step="0.05" value="0.2">
                     <span id="noise-value" class="value-display">0.20</span>
                 </div>
             </div>
-            <div class="btn-row">
+            <div class="btn-row" style="margin: 0.3rem 0;">
                 <button class="ctrl-btn" onclick="runSifting()">Update</button>
                 <button class="ctrl-btn" onclick="animateSifting()">Animate</button>
                 <button class="ctrl-btn" onclick="regenerateSignal()">New Signal</button>
             </div>
         </div>
 
-        <div class="section">
-            <div class="k-slider-container control-item">
-                <label>Iteration k (show trends 1..k)</label>
-                <input type="range" id="k-slider" min="1" max="100" step="1" value="100">
-                <span id="k-value" class="value-display">100</span>
-            </div>
-            <div class="chart-row">
-                <div id="chart-main" style="width: 100%; height: 400px;"></div>
-            </div>
-        </div>
-
-        <div class="section">
-            <h2>Bandwidth Schedule</h2>
-            <p>Bandwidth decay: \(h_{k+1} = h_k / r\) where <strong>r = <span id="formula-r">1.41</span></strong></p>
+        <div class="section" style="padding: 0.3rem 0;">
+            <p style="margin: 0; font-size: 0.8rem;">Bandwidth: \(h_{k+1} = h_k / r\), r = <span id="formula-r">1.41</span></p>
             <div id="bandwidth-display" class="bandwidth-bars"></div>
         </div>
 
-        <div class="section">
-            <h2>Reconstruction Quality</h2>
-            <p>Sum of extracted trends compared to original noisy signal</p>
+        <div class="section" style="padding: 0.3rem 0;">
             <div id="mse-display" class="mse-grid"></div>
-            <div id="reconstruction-chart" style="width:100%; height:200px;"></div>
-        </div>
-
-        <div class="section">
-            <h2>AM-FM Test Signal</h2>
-            <div class="signal-info">
-                <strong>Signal:</strong> \(y(x) = [1 + 0.5\sin(4\pi x)] \sin(2\pi(6x + 12x^2)) + \sigma\varepsilon\)<br>
-                <strong>Properties:</strong> Amplitude modulation (period 0.5) + frequency chirp (6-30 Hz)
-            </div>
+            <div id="reconstruction-chart" style="width:100%; height:150px;"></div>
         </div>
     </div>
 
