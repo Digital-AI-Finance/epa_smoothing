@@ -140,6 +140,56 @@
             margin: 0.4rem 0;
             font-size: 0.8rem;
         }
+        .iteration-row {
+            display: flex;
+            gap: 0.5rem;
+            margin: 0.4rem 0;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .iteration-slide {
+            width: 140px;
+            flex-shrink: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            text-align: center;
+        }
+        .iteration-slide .iter-num {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        .iteration-slide .iter-h {
+            font-family: monospace;
+            font-size: 0.85rem;
+            margin-top: 0.2rem;
+        }
+        .iteration-slide .iter-formula {
+            font-size: 0.7rem;
+            opacity: 0.9;
+            margin-top: 0.2rem;
+        }
+        .iteration-chart {
+            flex: 1;
+            min-height: 120px;
+        }
+        .iteration-row.current {
+            border-color: #2ca02c;
+            border-width: 2px;
+        }
+        .iteration-row.current .iteration-slide {
+            background: linear-gradient(135deg, #2ca02c 0%, #1b7a1b 100%);
+        }
+        .iteration-row.original .iteration-slide {
+            background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+        }
+        .iteration-row.reconstruction .iteration-slide {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        }
     </style>
 </head>
 <body>
@@ -217,7 +267,26 @@
 
         <div class="section">
             <h2>Decomposition</h2>
-            <div id="sifting-chart" class="chart-tall"></div>
+            <!-- Original signal row -->
+            <div class="iteration-row original">
+                <div class="iteration-slide">
+                    <div class="iter-num">Original</div>
+                    <div class="iter-h">AM-FM Signal</div>
+                    <div class="iter-formula">Clean + Noise</div>
+                </div>
+                <div class="iteration-chart" id="chart-original"></div>
+            </div>
+            <!-- Dynamic iteration rows -->
+            <div id="iteration-rows"></div>
+            <!-- Reconstruction row -->
+            <div class="iteration-row reconstruction">
+                <div class="iteration-slide">
+                    <div class="iter-num">Sum</div>
+                    <div class="iter-h">Reconstruction</div>
+                    <div class="iter-formula">All Trends</div>
+                </div>
+                <div class="iteration-chart" id="chart-reconstruction"></div>
+            </div>
         </div>
 
         <div class="section">
@@ -274,6 +343,7 @@
         const N = 200;
         const xData = Array.from({ length: N }, (_, i) => i / (N - 1));
         let cleanSignal, noisySignal, currentSeed = 42;
+        let animating = false;
 
         function seededRandom(seed) {
             return function() {
@@ -341,74 +411,56 @@
             }
         }
 
-        function plotSifting(results) {
-            const traces = [];
-            const numPlots = results.length + 2;
-
-            // Plot 0: Original signal
-            traces.push({
-                x: xData, y: noisySignal, mode: 'lines', name: 'Noisy',
-                line: { color: '#999', width: 1 }, xaxis: 'x', yaxis: 'y'
-            });
-            traces.push({
-                x: xData, y: cleanSignal, mode: 'lines', name: 'Clean',
-                line: { color: '#667eea', width: 2, dash: 'dash' }, xaxis: 'x', yaxis: 'y'
-            });
-
-            // Plots 1 to K: Each sifting iteration
-            results.forEach((r, idx) => {
-                const yaxis = `y${idx + 2}`;
-                traces.push({
-                    x: xData, y: r.input, mode: 'lines', name: `Input ${r.k}`,
-                    line: { color: '#ccc', width: 1 }, xaxis: 'x', yaxis,
-                    showlegend: idx === 0
-                });
-                traces.push({
-                    x: xData, y: r.trend, mode: 'lines', name: `Trend ${r.k}`,
-                    line: { color: '#667eea', width: 2 }, xaxis: 'x', yaxis,
-                    showlegend: idx === 0
-                });
-            });
-
-            // Plot K+1: Sum of trends vs original
-            const sumTrends = xData.map((_, i) =>
-                results.reduce((s, r) => s + r.trend[i], 0)
-            );
-            traces.push({
-                x: xData, y: noisySignal, mode: 'lines', name: 'Noisy',
-                line: { color: '#999', width: 1 }, xaxis: 'x', yaxis: `y${numPlots}`,
-                showlegend: false
-            });
-            traces.push({
-                x: xData, y: sumTrends, mode: 'lines', name: 'Sum of Trends',
-                line: { color: '#2ca02c', width: 2 }, xaxis: 'x', yaxis: `y${numPlots}`
-            });
-
-            // Layout with subplots
-            const plotHeight = 120;
-            const layout = {
-                height: numPlots * plotHeight + 50,
-                margin: { t: 30, r: 30, b: 40, l: 50 },
-                showlegend: true,
-                legend: { x: 1, y: 1, xanchor: 'right' },
-                annotations: []
+        function compactLayout() {
+            return {
+                height: 110,
+                margin: { t: 10, r: 15, b: 25, l: 40 },
+                showlegend: false,
+                xaxis: { tickfont: { size: 8 }, showgrid: true, gridcolor: '#eee' },
+                yaxis: { tickfont: { size: 8 }, showgrid: true, gridcolor: '#eee' }
             };
+        }
 
-            // Configure y-axes for subplots
-            const gap = 0.02;
-            const plotSize = (1 - gap * (numPlots - 1)) / numPlots;
-            for (let i = 0; i < numPlots; i++) {
-                const domain = [1 - (i + 1) * (plotSize + gap) + gap, 1 - i * (plotSize + gap) - gap];
-                const yaxisName = i === 0 ? 'yaxis' : `yaxis${i + 1}`;
-                let title = '';
-                if (i === 0) title = 'Original';
-                else if (i <= results.length) title = `Iter ${i} (h=${results[i-1].h.toFixed(3)})`;
-                else title = 'Reconstruction';
-                layout[yaxisName] = { domain, title: { text: title, font: { size: 10 } }, tickfont: { size: 8 } };
-            }
-            layout.xaxis = { title: 'x', tickfont: { size: 8 } };
+        function plotSifting(results, currentAnimIter = -1) {
+            // Plot original signal
+            Plotly.newPlot('chart-original', [
+                { x: xData, y: noisySignal, mode: 'lines', name: 'Noisy', line: { color: '#999', width: 1 } },
+                { x: xData, y: cleanSignal, mode: 'lines', name: 'Clean', line: { color: '#3b82f6', width: 2, dash: 'dash' } }
+            ], compactLayout(), { responsive: true });
 
-            Plotly.newPlot('sifting-chart', traces, layout, { responsive: true });
+            // Build iteration rows dynamically
+            const container = document.getElementById('iteration-rows');
+            container.innerHTML = '';
+            const decayFactor = parseFloat(document.getElementById('decay-slider').value);
+
+            results.forEach((r, idx) => {
+                const isCurrent = animating && (r.k === currentAnimIter);
+                const nextH = (r.h / decayFactor).toFixed(3);
+                container.innerHTML += `
+                    <div class="iteration-row ${isCurrent ? 'current' : ''}">
+                        <div class="iteration-slide">
+                            <div class="iter-num">k = ${r.k}</div>
+                            <div class="iter-h">h = ${r.h.toFixed(4)}</div>
+                            <div class="iter-formula">h${r.k+1} = ${nextH}</div>
+                        </div>
+                        <div class="iteration-chart" id="chart-iter-${r.k}"></div>
+                    </div>`;
+            });
+
+            // Plot each iteration chart
+            results.forEach((r) => {
+                Plotly.newPlot(`chart-iter-${r.k}`, [
+                    { x: xData, y: r.input, mode: 'lines', name: 'Input', line: { color: '#aaa', width: 1 } },
+                    { x: xData, y: r.trend, mode: 'lines', name: 'Trend', line: { color: '#667eea', width: 2 } }
+                ], compactLayout(), { responsive: true });
+            });
+
+            // Plot reconstruction
+            const sumTrends = xData.map((_, i) => results.reduce((s, r) => s + r.trend[i], 0));
+            Plotly.newPlot('chart-reconstruction', [
+                { x: xData, y: noisySignal, mode: 'lines', name: 'Noisy', line: { color: '#999', width: 1 } },
+                { x: xData, y: sumTrends, mode: 'lines', name: 'Sum of Trends', line: { color: '#059669', width: 2 } }
+            ], compactLayout(), { responsive: true });
 
             // Update MSE display
             updateMSE(results, sumTrends);
@@ -467,13 +519,18 @@
 
             generateAMFM(sigma);
             let currentIter = 0;
+            animating = true;
 
             function step() {
                 currentIter++;
-                if (currentIter > numIter) return;
+                if (currentIter > numIter) {
+                    animating = false;
+                    plotSifting(fullSifting(h1, numIter, decayFactor));
+                    return;
+                }
                 const results = fullSifting(h1, currentIter, decayFactor);
                 updateBandwidthDisplay(h1, numIter, decayFactor, currentIter);
-                plotSifting(results);
+                plotSifting(results, currentIter);
                 setTimeout(step, 800);
             }
             step();
