@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sifting - EPA Local Median Smoothing</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        .chart-container {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1.5rem 0;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
+        .chart-container h4 {
+            color: #667eea;
+            margin-bottom: 0.5rem;
+        }
+        .chart-container object,
+        .chart-container img {
+            width: 100%;
+            max-width: 800px;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+        .bandwidth-table {
+            margin: 1.5rem 0;
+        }
+        .bandwidth-table td:first-child {
+            font-weight: bold;
+            color: #667eea;
+        }
+        .external-links {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+        .external-link {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem;
+            border-radius: 8px;
+            text-decoration: none;
+            text-align: center;
+            transition: transform 0.3s;
+        }
+        .external-link:hover {
+            transform: translateY(-3px);
+        }
+        .method-comparison {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+        .method-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1.5rem;
+            border-left: 4px solid #667eea;
+        }
+        .method-card h4 {
+            color: #667eea;
+            margin-bottom: 0.5rem;
+        }
+        .method-card.highlight {
+            border-left-color: #2ca02c;
+            background: #f0fff0;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar">
+    <div class="nav-container">
+        <a href="index.html" class="nav-logo">EPA Smoothing</a>
+        <button class="nav-toggle" onclick="toggleNav()">&#9776;</button>
+        <ul class="nav-menu" id="nav-menu">
+            <li><a href="index.html">Home</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="theory.html">Theory</a></li>
+            <li><a href="emd-intro.html">EMD Intro</a></li>
+            <li><a href="local-median.html">Local Median</a></li>
+            <li><a href="sifting.html">Sifting</a></li>
+            <li><a href="api.html">API</a></li>
+            <li><a href="code.html">Code</a></li>
+            <li><a href="examples.html">Examples</a></li>
+            <li><a href="team.html">Team</a></li>
+        </ul>
+    </div>
+</nav>
+
+    <section class="hero">
+        <h1>EMD Sifting Process</h1>
+        <p>Empirical Mode Decomposition with Local Median Smoothing using bandwidth halving schedule</p>
+    </section>
+
+    <div class="container">
+        <div class="section">
+            <h2>AM-FM Signal Specification</h2>
+            <p>The test signal is an amplitude-modulated, frequency-modulated (AM-FM) signal with additive noise:</p>
+
+            <div class="formula">
+                <p><strong>Amplitude modulation:</strong></p>
+                \[ A(x) = 1 + 0.5 \sin(4\pi x) \]
+            </div>
+
+            <div class="formula">
+                <p><strong>Phase function:</strong></p>
+                \[ \phi(x) = 2\pi (6x + 12x^2) \]
+            </div>
+
+            <div class="formula">
+                <p><strong>Instantaneous frequency:</strong></p>
+                \[ f(x) = \frac{1}{2\pi}\frac{d\phi}{dx} = 6 + 24x \]
+            </div>
+
+            <div class="formula">
+                <p><strong>Clean signal:</strong></p>
+                \[ y_{\text{clean}}(x) = A(x) \sin(\phi(x)) = [1 + 0.5\sin(4\pi x)] \sin(2\pi(6x + 12x^2)) \]
+            </div>
+
+            <div class="formula">
+                <p><strong>Noisy signal:</strong></p>
+                \[ y(x) = y_{\text{clean}}(x) + 0.2 \varepsilon(x), \quad \varepsilon \sim \mathcal{N}(0,1) \]
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Bandwidth Halving Schedule</h2>
+            <p>The sifting process uses a bandwidth halving schedule where each iteration uses a smaller bandwidth:</p>
+
+            <div class="formula">
+                \[ h_1 = 0.1, \quad h_{k+1} = \frac{h_k}{\sqrt{2}} \]
+            </div>
+
+            <table class="bandwidth-table">
+                <tr>
+                    <th>Iteration</th>
+                    <th>Bandwidth</th>
+                    <th>Formula</th>
+                    <th>Value</th>
+                </tr>
+                <tr>
+                    <td>1</td>
+                    <td>\(h_1\)</td>
+                    <td>\(h_1\)</td>
+                    <td>0.1</td>
+                </tr>
+                <tr>
+                    <td>2</td>
+                    <td>\(h_2\)</td>
+                    <td>\(h_1 / \sqrt{2}\)</td>
+                    <td>0.0707</td>
+                </tr>
+                <tr>
+                    <td>3</td>
+                    <td>\(h_3\)</td>
+                    <td>\(h_1 / 2\)</td>
+                    <td>0.05</td>
+                </tr>
+                <tr>
+                    <td>4</td>
+                    <td>\(h_4\)</td>
+                    <td>\(h_1 / (2\sqrt{2})\)</td>
+                    <td>0.0354</td>
+                </tr>
+                <tr>
+                    <td>5</td>
+                    <td>\(h_5\)</td>
+                    <td>\(h_1 / 4\)</td>
+                    <td>0.025</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Sifting Iterations</h2>
+            <p>Each iteration extracts an Intrinsic Mode Function (IMF) using local median smoothing. The residual from each iteration becomes the input for the next.</p>
+
+            <div class="formula">
+                \[ r^{(k+1)} = r^{(k)} - \hat{m}^{(k)} \]
+            </div>
+            <p>where \(\hat{m}^{(k)}\) is the local median smoothed estimate of the residual \(r^{(k)}\) at iteration \(k\).</p>
+
+            <div class="chart-container">
+                <h4>Iteration 1: h = 0.1</h4>
+                <p>Initial signal and first IMF extraction with bandwidth h = 0.1</p>
+                <object data="04_sifting_iter1/chart.pdf" type="application/pdf" width="100%" height="450">
+                    <img src="04_sifting_iter1/chart.png" alt="Sifting Iteration 1" onerror="this.style.display='none'">
+                    <p>PDF cannot be displayed. <a href="04_sifting_iter1/chart.pdf">Download PDF</a></p>
+                </object>
+            </div>
+
+            <div class="chart-container">
+                <h4>Iteration 2: h = 0.0707</h4>
+                <p>Second iteration with bandwidth h = h1/sqrt(2)</p>
+                <object data="05_sifting_iter2/chart.pdf" type="application/pdf" width="100%" height="450">
+                    <img src="05_sifting_iter2/chart.png" alt="Sifting Iteration 2" onerror="this.style.display='none'">
+                    <p>PDF cannot be displayed. <a href="05_sifting_iter2/chart.pdf">Download PDF</a></p>
+                </object>
+            </div>
+
+            <div class="chart-container">
+                <h4>Iteration 3: h = 0.05</h4>
+                <p>Third iteration with bandwidth h = h1/2</p>
+                <object data="06_sifting_iter3/chart.pdf" type="application/pdf" width="100%" height="450">
+                    <img src="06_sifting_iter3/chart.png" alt="Sifting Iteration 3" onerror="this.style.display='none'">
+                    <p>PDF cannot be displayed. <a href="06_sifting_iter3/chart.pdf">Download PDF</a></p>
+                </object>
+            </div>
+
+            <div class="chart-container">
+                <h4>Iteration 4: h = 0.0354</h4>
+                <p>Fourth iteration with bandwidth h = h1/(2*sqrt(2))</p>
+                <object data="07_sifting_iter4/chart.pdf" type="application/pdf" width="100%" height="450">
+                    <img src="07_sifting_iter4/chart.png" alt="Sifting Iteration 4" onerror="this.style.display='none'">
+                    <p>PDF cannot be displayed. <a href="07_sifting_iter4/chart.pdf">Download PDF</a></p>
+                </object>
+            </div>
+
+            <div class="chart-container">
+                <h4>Iteration 5: h = 0.025</h4>
+                <p>Fifth iteration with bandwidth h = h1/4</p>
+                <object data="08_sifting_iter5/chart.pdf" type="application/pdf" width="100%" height="450">
+                    <img src="08_sifting_iter5/chart.png" alt="Sifting Iteration 5" onerror="this.style.display='none'">
+                    <p>PDF cannot be displayed. <a href="08_sifting_iter5/chart.pdf">Download PDF</a></p>
+                </object>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Method Comparison</h2>
+            <p>Three approaches for computing the local trend in EMD sifting:</p>
+
+            <div class="method-comparison">
+                <div class="method-card highlight">
+                    <h4>Local Median (Recommended)</h4>
+                    <p>Kernel-weighted median using Epanechnikov kernel. Robust to outliers with 50% breakdown point.</p>
+                    <div class="formula">
+                        \[ \hat{m}(x_0) = \text{argmin}_m \sum_i K\left(\frac{x_i - x_0}{h}\right) |y_i - m| \]
+                    </div>
+                </div>
+
+                <div class="method-card">
+                    <h4>Median Approach</h4>
+                    <p>Running median with efficient heap-based computation (Hardle & Steiger 1995).</p>
+                    <div class="formula">
+                        \[ \hat{m}(x_i) = \text{median}\{y_j : j \in W_i\} \]
+                    </div>
+                </div>
+
+                <div class="method-card">
+                    <h4>Average Approach</h4>
+                    <p>Standard Nadaraya-Watson kernel regression. Not robust to outliers.</p>
+                    <div class="formula">
+                        \[ \hat{m}(x_0) = \frac{\sum_i K\left(\frac{x_i - x_0}{h}\right) y_i}{\sum_i K\left(\frac{x_i - x_0}{h}\right)} \]
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Heap-Based Median Algorithm</h2>
+            <p>For efficient running median computation, the algorithm of Hardle & Steiger (1995) uses a binary-tree structure with min/max heaps:</p>
+
+            <div class="formula">
+                <p><strong>Window partitions:</strong></p>
+                \[ L_i = \{X_t \in W_i \mid X_t \leq \text{median}\} \]
+                \[ U_i = \{X_t \in W_i \mid X_t \geq \text{median}\} \]
+            </div>
+
+            <div class="formula">
+                <p><strong>Median computation:</strong></p>
+                \[ \text{median} = \begin{cases}
+                \max(L_i) & \text{if } |L_i| > |U_i| \\
+                \min(U_i) & \text{if } |U_i| > |L_i| \\
+                \frac{\max(L_i) + \min(U_i)}{2} & \text{if } |L_i| = |U_i|
+                \end{cases} \]
+            </div>
+
+            <p><strong>Complexity:</strong> O(n log k) where n is the number of data points and k is the window size, compared to O(nk) for naive implementation.</p>
+        </div>
+
+        <div class="section">
+            <h2>External Resources</h2>
+            <p>Related projects and implementations:</p>
+
+            <div class="external-links">
+                <a href="https://github.com/ionASE-coder/EMD" class="external-link" target="_blank">
+                    GitHub: EMD<br><small>Median Approach Code</small>
+                </a>
+                <a href="https://theIDA.net" class="external-link" target="_blank">
+                    theIDA.net<br><small>Research Group</small>
+                </a>
+                <a href="https://Quantinar.com" class="external-link" target="_blank">
+                    Quantinar.com<br><small>Quantitative Finance</small>
+                </a>
+                <a href="https://Quantlet.com" class="external-link" target="_blank">
+                    Quantlet.com<br><small>Code Repository</small>
+                </a>
+                <a href="https://Blockchain-Research-Center.com" class="external-link" target="_blank">
+                    Blockchain Research Center<br><small>Affiliated Research</small>
+                </a>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>References</h2>
+            <ul style="margin-left: 2rem;">
+                <li>Hardle, W., & Steiger, W. (1995). Algorithm AS 296: Optimal median smoothing. <em>Applied Statistics</em>, 44(2), 258-264.</li>
+                <li>Huang, N. E., et al. (1998). The empirical mode decomposition and the Hilbert spectrum for nonlinear and non-stationary time series analysis. <em>Proceedings of the Royal Society A</em>, 454, 903-995.</li>
+                <li>Sha, Y., Spokoiny, V., Hardle, W. K., et al. (2024). A New EMD Approach using Local Median Smoothing.</li>
+            </ul>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>EPA Local Median Smoothing | <a href="https://github.com/Digital-AI-Finance/epa_smoothing">GitHub</a></p>
+    </footer>
+
+    <script>
+        function toggleNav() {
+            document.getElementById('nav-menu').classList.toggle('active');
+        }
+    </script>
+</body>
+</html>

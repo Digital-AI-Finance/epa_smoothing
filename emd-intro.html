@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMD Introduction - EPA Local Median Smoothing</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        .concept-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-left: 4px solid #667eea;
+        }
+        .concept-card h4 {
+            color: #667eea;
+            margin-bottom: 0.75rem;
+        }
+        .feature-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+        .feature-item {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .feature-item h5 {
+            color: #667eea;
+            margin-bottom: 0.5rem;
+            font-size: 0.95rem;
+        }
+        .feature-item p {
+            color: #666;
+            font-size: 0.9rem;
+            margin: 0;
+        }
+        .signal-diagram {
+            background: white;
+            border-radius: 10px;
+            padding: 2rem;
+            margin: 1.5rem 0;
+            text-align: center;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+        }
+        .signal-diagram svg {
+            max-width: 100%;
+            height: auto;
+        }
+        .envelope-legend {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+        .legend-color {
+            width: 20px;
+            height: 3px;
+            border-radius: 2px;
+        }
+        .toc-box {
+            background: linear-gradient(135deg, #f5f7ff 0%, #fff 100%);
+            border: 1px solid #e0e5ff;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+        }
+        .toc-box h4 {
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+        .toc-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .toc-list li {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #e0e5ff;
+        }
+        .toc-list li:last-child {
+            border-bottom: none;
+        }
+        .toc-list a {
+            color: #333;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .toc-list a:hover {
+            color: #667eea;
+        }
+        .toc-number {
+            background: #667eea;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar">
+    <div class="nav-container">
+        <a href="index.html" class="nav-logo">EPA Smoothing</a>
+        <button class="nav-toggle" onclick="toggleNav()">&#9776;</button>
+        <ul class="nav-menu" id="nav-menu">
+            <li><a href="index.html">Home</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="theory.html">Theory</a></li>
+            <li><a href="emd-intro.html">EMD Intro</a></li>
+            <li><a href="local-median.html">Local Median</a></li>
+            <li><a href="sifting.html">Sifting</a></li>
+            <li><a href="api.html">API</a></li>
+            <li><a href="code.html">Code</a></li>
+            <li><a href="examples.html">Examples</a></li>
+            <li><a href="team.html">Team</a></li>
+        </ul>
+    </div>
+</nav>
+
+    <section class="hero">
+        <h1>What is EMD?</h1>
+        <p>Empirical Mode Decomposition for nonlinear and non-stationary signal analysis</p>
+    </section>
+
+    <div class="container">
+        <div class="section">
+            <h2>Overview</h2>
+            <p>Empirical Mode Decomposition (EMD) is a data-driven method for decomposing complex signals into simpler oscillatory components called <strong>Intrinsic Mode Functions (IMFs)</strong>. Unlike Fourier analysis, EMD makes no assumptions about linearity or stationarity.</p>
+
+            <div class="toc-box">
+                <h4>Presentation Outline</h4>
+                <ol class="toc-list">
+                    <li><a href="emd-intro.html"><span class="toc-number">1</span> What is EMD (this page)</a></li>
+                    <li><a href="local-median.html"><span class="toc-number">2</span> Local Median Approach</a></li>
+                    <li><a href="sifting.html"><span class="toc-number">3</span> Sifting Process &amp; Results</a></li>
+                </ol>
+                <p style="margin-top: 1rem; color: #666; font-size: 0.9rem;"><strong>Application Domain:</strong> Cryptocurrency Returns Analysis</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Empirical Mode Decomposition</h2>
+
+            <div class="concept-card">
+                <h4>Core Idea</h4>
+                <p>EMD decomposes a signal into nonlinear and non-stationary components that are extracted adaptively from the data itself. The result is a collection of Intrinsic Mode Functions (IMFs) plus a residual trend.</p>
+            </div>
+
+            <div class="formula">
+                <p><strong>Signal Decomposition:</strong></p>
+                \[ X(t) = \sum_{k=1}^{K} \text{IMF}_k(t) + r(t) \]
+                <p style="margin-top: 0.5rem; color: #666;">where \(\text{IMF}_k\) are the intrinsic mode functions and \(r(t)\) is the residual trend.</p>
+            </div>
+
+            <h3>Key Features</h3>
+            <div class="feature-list">
+                <div class="feature-item">
+                    <h5>Adaptive Decomposition</h5>
+                    <p>The decomposition is entirely data-dependent, not relying on predetermined basis functions.</p>
+                </div>
+                <div class="feature-item">
+                    <h5>No Linearity Assumption</h5>
+                    <p>Works for nonlinear systems where Fourier methods fail.</p>
+                </div>
+                <div class="feature-item">
+                    <h5>Non-stationary Signals</h5>
+                    <p>Handles time-varying frequency and amplitude naturally.</p>
+                </div>
+                <div class="feature-item">
+                    <h5>Time-Frequency Analysis</h5>
+                    <p>Each IMF captures oscillations at a characteristic time scale.</p>
+                </div>
+            </div>
+
+            <h3>Envelope-Based Sifting</h3>
+            <p>Traditional EMD uses envelope detection to identify the local mean:</p>
+
+            <div class="signal-diagram">
+                <svg viewBox="0 0 600 200" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Grid lines -->
+                    <defs>
+                        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#eee" stroke-width="1"/>
+                        </pattern>
+                    </defs>
+                    <rect width="600" height="200" fill="url(#grid)"/>
+
+                    <!-- Signal -->
+                    <path d="M 20 100 Q 60 40, 100 100 T 180 100 T 260 100 T 340 100 T 420 100 T 500 100 T 580 100"
+                          stroke="#333" stroke-width="2" fill="none"/>
+
+                    <!-- Upper envelope -->
+                    <path d="M 20 50 C 80 30, 140 35, 200 45 C 260 55, 320 40, 380 50 C 440 60, 500 45, 580 55"
+                          stroke="#ff7f0e" stroke-width="2" fill="none" stroke-dasharray="5,3"/>
+
+                    <!-- Lower envelope -->
+                    <path d="M 20 150 C 80 170, 140 165, 200 155 C 260 145, 320 160, 380 150 C 440 140, 500 155, 580 145"
+                          stroke="#2ca02c" stroke-width="2" fill="none" stroke-dasharray="5,3"/>
+
+                    <!-- Mean line -->
+                    <path d="M 20 100 C 80 100, 140 100, 200 100 C 260 100, 320 100, 380 100 C 440 100, 500 100, 580 100"
+                          stroke="#d62728" stroke-width="2" fill="none"/>
+
+                    <!-- Labels -->
+                    <text x="590" y="55" font-size="12" fill="#ff7f0e">Upper</text>
+                    <text x="590" y="145" font-size="12" fill="#2ca02c">Lower</text>
+                    <text x="590" y="100" font-size="12" fill="#d62728">Mean</text>
+                </svg>
+                <div class="envelope-legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #333;"></div>
+                        <span>Signal</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #ff7f0e;"></div>
+                        <span>Upper Envelope</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #2ca02c;"></div>
+                        <span>Lower Envelope</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #d62728;"></div>
+                        <span>Local Mean</span>
+                    </div>
+                </div>
+            </div>
+
+            <p>The local mean is computed as the average of upper and lower envelopes connecting local maxima and minima.</p>
+        </div>
+
+        <div class="section">
+            <h2>AM-FM Signal Model</h2>
+            <p>For testing and validation, we use an amplitude-modulated, frequency-modulated (AM-FM) signal that exhibits both time-varying amplitude and instantaneous frequency.</p>
+
+            <div class="concept-card">
+                <h4>Why AM-FM Signals?</h4>
+                <p>AM-FM signals are ideal test cases because they are non-stationary by construction, have known ground truth for validation, and appear naturally in many applications (speech, radar, biomedical signals, financial data).</p>
+            </div>
+
+            <h3>Mathematical Specification</h3>
+
+            <div class="formula">
+                <p><strong>Amplitude Modulation:</strong></p>
+                \[ A(x) = 1 + 0.5 \sin(4\pi x) \]
+                <p style="margin-top: 0.5rem; color: #666;">The amplitude varies between 0.5 and 1.5 with period 0.5.</p>
+            </div>
+
+            <div class="formula">
+                <p><strong>Phase Function:</strong></p>
+                \[ \phi(x) = 2\pi (6x + 12x^2) \]
+                <p style="margin-top: 0.5rem; color: #666;">Quadratic phase creates a chirp (increasing frequency).</p>
+            </div>
+
+            <div class="formula">
+                <p><strong>Instantaneous Frequency:</strong></p>
+                \[ f(x) = \frac{1}{2\pi}\frac{d\phi}{dx} = 6 + 24x \]
+                <p style="margin-top: 0.5rem; color: #666;">Frequency increases linearly from 6 Hz at x=0 to 30 Hz at x=1.</p>
+            </div>
+
+            <div class="formula">
+                <p><strong>Clean Signal:</strong></p>
+                \[ y_{\text{clean}}(x) = A(x) \sin(\phi(x)) = [1 + 0.5\sin(4\pi x)] \sin(2\pi(6x + 12x^2)) \]
+            </div>
+
+            <div class="formula">
+                <p><strong>Noisy Signal:</strong></p>
+                \[ y(x) = y_{\text{clean}}(x) + \sigma \varepsilon(x), \quad \varepsilon \sim \mathcal{N}(0,1) \]
+                <p style="margin-top: 0.5rem; color: #666;">We typically use \(\sigma = 0.2\) for examples.</p>
+            </div>
+
+            <h3>Signal Characteristics</h3>
+            <table>
+                <tr>
+                    <th>Property</th>
+                    <th>Value</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td>Amplitude Range</td>
+                    <td>[0.5, 1.5]</td>
+                    <td>Modulated by low-frequency sinusoid</td>
+                </tr>
+                <tr>
+                    <td>Frequency Range</td>
+                    <td>[6, 30] Hz</td>
+                    <td>Linear chirp (increasing frequency)</td>
+                </tr>
+                <tr>
+                    <td>Noise Level</td>
+                    <td>\(\sigma = 0.2\)</td>
+                    <td>Moderate Gaussian noise</td>
+                </tr>
+                <tr>
+                    <td>Domain</td>
+                    <td>\(x \in [0, 1]\)</td>
+                    <td>Normalized time interval</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Three Decomposition Approaches</h2>
+            <p>We compare three methods for computing the local trend in the sifting process:</p>
+
+            <div class="feature-list">
+                <div class="feature-item" style="border-left: 4px solid #2ca02c; padding-left: 1rem;">
+                    <h5>1. Local Median (Recommended)</h5>
+                    <p>Kernel-weighted median using Epanechnikov kernel. Robust to outliers with 50% breakdown point.</p>
+                    <p style="margin-top: 0.5rem;"><a href="local-median.html">Learn more</a></p>
+                </div>
+                <div class="feature-item" style="border-left: 4px solid #667eea; padding-left: 1rem;">
+                    <h5>2. Median Approach</h5>
+                    <p>Running median with efficient heap-based computation (Hardle &amp; Steiger 1995).</p>
+                </div>
+                <div class="feature-item" style="border-left: 4px solid #999; padding-left: 1rem;">
+                    <h5>3. Average Approach</h5>
+                    <p>Standard Nadaraya-Watson kernel regression. Not robust to outliers.</p>
+                </div>
+            </div>
+
+            <p style="margin-top: 1.5rem;">The <strong>Local Median</strong> approach combines the adaptivity of kernel smoothing with the robustness of the median, making it ideal for financial time series that often contain extreme values.</p>
+        </div>
+
+        <div class="section">
+            <h2>Next Steps</h2>
+            <div class="nav-cards">
+                <a href="local-median.html" class="nav-card">
+                    <h4>Local Median Approach</h4>
+                    <p>Mathematical formulation and procedure</p>
+                </a>
+                <a href="sifting.html" class="nav-card">
+                    <h4>Sifting Process</h4>
+                    <p>Iterative decomposition with bandwidth halving</p>
+                </a>
+                <a href="dashboard.html" class="nav-card">
+                    <h4>Interactive Dashboard</h4>
+                    <p>Try the smoother with your parameters</p>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>EPA Local Median Smoothing | <a href="https://github.com/Digital-AI-Finance/epa_smoothing">GitHub</a></p>
+    </footer>
+
+    <script>
+        function toggleNav() {
+            document.getElementById('nav-menu').classList.toggle('active');
+        }
+    </script>
+</body>
+</html>

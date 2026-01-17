@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Median Approach - EPA Local Median Smoothing</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        .math-box {
+            background: linear-gradient(135deg, #f5f7ff 0%, #fff 100%);
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+        }
+        .math-box h4 {
+            color: #667eea;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+        }
+        .step-list {
+            counter-reset: step-counter;
+            list-style: none;
+            padding: 0;
+        }
+        .step-list li {
+            counter-increment: step-counter;
+            padding: 1rem 1rem 1rem 3.5rem;
+            margin: 0.5rem 0;
+            background: #f8f9fa;
+            border-radius: 8px;
+            position: relative;
+        }
+        .step-list li::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #667eea;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        .algorithm-box {
+            background: #2d2d2d;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            color: #f8f8f2;
+            font-family: 'Fira Code', monospace;
+        }
+        .algorithm-box h4 {
+            color: #667eea;
+            margin-bottom: 1rem;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        .algorithm-line {
+            margin: 0.25rem 0;
+            padding-left: 1rem;
+        }
+        .keyword {
+            color: #ff79c6;
+        }
+        .comment {
+            color: #6272a4;
+        }
+        .var {
+            color: #50fa7b;
+        }
+        .param-table {
+            margin: 1rem 0;
+        }
+        .param-table th {
+            background: #667eea;
+        }
+        .bandwidth-visual {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+        }
+        .bandwidth-bar {
+            display: flex;
+            align-items: center;
+            margin: 0.75rem 0;
+        }
+        .bandwidth-label {
+            width: 80px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .bandwidth-track {
+            flex: 1;
+            height: 24px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            position: relative;
+            margin: 0 1rem;
+        }
+        .bandwidth-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+        .bandwidth-value {
+            width: 60px;
+            text-align: right;
+            font-family: monospace;
+            color: #333;
+        }
+        .highlight-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            padding: 1rem 1.5rem;
+            margin: 1rem 0;
+        }
+        .highlight-box strong {
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar">
+    <div class="nav-container">
+        <a href="index.html" class="nav-logo">EPA Smoothing</a>
+        <button class="nav-toggle" onclick="toggleNav()">&#9776;</button>
+        <ul class="nav-menu" id="nav-menu">
+            <li><a href="index.html">Home</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="theory.html">Theory</a></li>
+            <li><a href="emd-intro.html">EMD Intro</a></li>
+            <li><a href="local-median.html">Local Median</a></li>
+            <li><a href="sifting.html">Sifting</a></li>
+            <li><a href="api.html">API</a></li>
+            <li><a href="code.html">Code</a></li>
+            <li><a href="examples.html">Examples</a></li>
+            <li><a href="team.html">Team</a></li>
+        </ul>
+    </div>
+</nav>
+
+    <section class="hero">
+        <h1>Local Median Approach</h1>
+        <p>Mathematical formulation and iterative procedure for robust EMD</p>
+    </section>
+
+    <div class="container">
+        <div class="section">
+            <h2>Mathematical Setup</h2>
+            <p>The local median approach replaces the standard weighted mean with a weighted median, providing robustness against outliers while preserving the adaptive nature of kernel smoothing.</p>
+
+            <div class="math-box">
+                <h4>Core Optimization Problem</h4>
+                <p>At each point \(t\), we find the local median as the solution to a weighted L1 minimization:</p>
+                <div class="formula">
+                    \[ \tilde{X}_t^{(1)} = \underset{m}{\text{argmin}} \sum_s |X_s - m| \cdot K_h(s-t) \]
+                </div>
+                <p style="margin-top: 0.5rem; color: #666;">This is exactly the <strong>weighted median</strong> of the observations \(\{X_s\}\) with weights \(\{K_h(s-t)\}\).</p>
+            </div>
+
+            <h3>Kernel Function</h3>
+            <p>We use the Epanechnikov kernel with bandwidth \(h\):</p>
+
+            <div class="formula">
+                \[ K_h(u) = \frac{1}{h} K\left(\frac{u}{h}\right) \]
+            </div>
+
+            <div class="formula">
+                \[ K(u) = \frac{3}{4}(1 - u^2) \cdot \mathbf{1}_{|u| \leq 1} \]
+            </div>
+
+            <h3>Why Weighted Median?</h3>
+            <table>
+                <tr>
+                    <th>Property</th>
+                    <th>Weighted Mean</th>
+                    <th>Weighted Median</th>
+                </tr>
+                <tr>
+                    <td>Optimization</td>
+                    <td>\(\min_m \sum w_i(y_i - m)^2\)</td>
+                    <td>\(\min_m \sum w_i|y_i - m|\)</td>
+                </tr>
+                <tr>
+                    <td>Breakdown Point</td>
+                    <td class="highlight-red">0%</td>
+                    <td class="highlight-green">50%</td>
+                </tr>
+                <tr>
+                    <td>Single Outlier Effect</td>
+                    <td>Unbounded influence</td>
+                    <td>Bounded influence</td>
+                </tr>
+                <tr>
+                    <td>Computation</td>
+                    <td>Simple average</td>
+                    <td>Requires sorting</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Iterative Sifting Procedure</h2>
+            <p>The local median smoothing is applied iteratively with decreasing bandwidth to extract multiple IMFs.</p>
+
+            <div class="math-box">
+                <h4>Sifting Step k</h4>
+                <div class="formula">
+                    \[ \tilde{X}_t^{(k)} = \underset{m}{\text{argmin}} \sum_s |X_s^{(k)} - m| \cdot K_{h_k}(s-t) \]
+                </div>
+                <p style="margin-top: 0.5rem;">Valid for \(t \in [h_k, 1-h_k]\) (boundary handling).</p>
+            </div>
+
+            <div class="math-box">
+                <h4>Residual Update</h4>
+                <div class="formula">
+                    \[ X_t^{(k+1)} = X_t^{(k)} - \tilde{X}_t^{(k)} \]
+                </div>
+                <p style="margin-top: 0.5rem;">The residual from iteration \(k\) becomes the input for iteration \(k+1\).</p>
+            </div>
+
+            <h3>Algorithm Steps</h3>
+            <ol class="step-list">
+                <li><strong>Initialize:</strong> Set \(X^{(1)} = X\) (original signal) and choose initial bandwidth \(h_1\)</li>
+                <li><strong>Smooth:</strong> Compute local median \(\tilde{X}^{(k)}\) using bandwidth \(h_k\)</li>
+                <li><strong>Extract:</strong> Store \(\tilde{X}^{(k)}\) as the k-th IMF component</li>
+                <li><strong>Residual:</strong> Compute \(X^{(k+1)} = X^{(k)} - \tilde{X}^{(k)}\)</li>
+                <li><strong>Halve:</strong> Update bandwidth \(h_{k+1} = h_k / \sqrt{2}\)</li>
+                <li><strong>Check:</strong> If \(h_{k+1} < h_{\min}\), stop. Otherwise, repeat from step 2</li>
+            </ol>
+        </div>
+
+        <div class="section">
+            <h2>Bandwidth Selection</h2>
+            <p>The bandwidth sequence controls the scale of features extracted at each iteration.</p>
+
+            <div class="math-box">
+                <h4>Geometric Decay Rule</h4>
+                <div class="formula">
+                    \[ h_{k+1} = \frac{h_k}{\sqrt{2}}, \quad k = 1, 2, \ldots \]
+                </div>
+                <p style="margin-top: 0.5rem;">Equivalently: \(h_k = h_1 \cdot 2^{-(k-1)/2}\)</p>
+            </div>
+
+            <h3>Initialization</h3>
+            <div class="highlight-box">
+                <strong>Rule of thumb:</strong> Start with \(h_1 \approx 0.1\) to smooth out noise while capturing gross features of the signal.
+            </div>
+
+            <h3>Stopping Criterion</h3>
+            <div class="highlight-box">
+                <strong>Stop when:</strong> \(h_{k+1} < h_{\min}\), where \(h_{\min}\) is the minimum meaningful bandwidth (typically around 0.02-0.03 depending on sample size).
+            </div>
+
+            <h3>Bandwidth Sequence Visualization</h3>
+            <div class="bandwidth-visual">
+                <div class="bandwidth-bar">
+                    <span class="bandwidth-label">h1</span>
+                    <div class="bandwidth-track">
+                        <div class="bandwidth-fill" style="width: 100%;"></div>
+                    </div>
+                    <span class="bandwidth-value">0.1000</span>
+                </div>
+                <div class="bandwidth-bar">
+                    <span class="bandwidth-label">h2</span>
+                    <div class="bandwidth-track">
+                        <div class="bandwidth-fill" style="width: 70.7%;"></div>
+                    </div>
+                    <span class="bandwidth-value">0.0707</span>
+                </div>
+                <div class="bandwidth-bar">
+                    <span class="bandwidth-label">h3</span>
+                    <div class="bandwidth-track">
+                        <div class="bandwidth-fill" style="width: 50%;"></div>
+                    </div>
+                    <span class="bandwidth-value">0.0500</span>
+                </div>
+                <div class="bandwidth-bar">
+                    <span class="bandwidth-label">h4</span>
+                    <div class="bandwidth-track">
+                        <div class="bandwidth-fill" style="width: 35.4%;"></div>
+                    </div>
+                    <span class="bandwidth-value">0.0354</span>
+                </div>
+                <div class="bandwidth-bar">
+                    <span class="bandwidth-label">h5</span>
+                    <div class="bandwidth-track">
+                        <div class="bandwidth-fill" style="width: 25%;"></div>
+                    </div>
+                    <span class="bandwidth-value">0.0250</span>
+                </div>
+            </div>
+
+            <table class="param-table">
+                <tr>
+                    <th>Iteration</th>
+                    <th>Bandwidth</th>
+                    <th>Formula</th>
+                    <th>Captures</th>
+                </tr>
+                <tr>
+                    <td>1</td>
+                    <td>0.1</td>
+                    <td>\(h_1\)</td>
+                    <td>Gross trend / low frequency</td>
+                </tr>
+                <tr>
+                    <td>2</td>
+                    <td>0.0707</td>
+                    <td>\(h_1/\sqrt{2}\)</td>
+                    <td>Medium-scale features</td>
+                </tr>
+                <tr>
+                    <td>3</td>
+                    <td>0.05</td>
+                    <td>\(h_1/2\)</td>
+                    <td>Finer oscillations</td>
+                </tr>
+                <tr>
+                    <td>4</td>
+                    <td>0.0354</td>
+                    <td>\(h_1/(2\sqrt{2})\)</td>
+                    <td>High frequency details</td>
+                </tr>
+                <tr>
+                    <td>5</td>
+                    <td>0.025</td>
+                    <td>\(h_1/4\)</td>
+                    <td>Finest resolvable scale</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Output: IMF Collection</h2>
+            <p>The sifting process produces a sequence of Intrinsic Mode Functions.</p>
+
+            <div class="math-box">
+                <h4>IMF Sequence</h4>
+                <div class="formula">
+                    \[ \text{IMFs} = \left\{ \tilde{X}_t^{(1)}, \tilde{X}_t^{(2)}, \ldots, \tilde{X}_t^{(K)} \right\} \]
+                </div>
+                <p style="margin-top: 0.5rem;">where \(K\) is determined by the stopping criterion.</p>
+            </div>
+
+            <div class="math-box">
+                <h4>Signal Reconstruction</h4>
+                <div class="formula">
+                    \[ \bar{X}_t = \sum_{k=1}^{K} \tilde{X}_t^{(k)} \]
+                </div>
+                <p style="margin-top: 0.5rem;">The sum of all IMFs approximates the original signal (minus the final residual).</p>
+            </div>
+
+            <h3>Properties of the Decomposition</h3>
+            <ul style="margin-left: 2rem;">
+                <li><strong>Multi-scale:</strong> Each IMF captures oscillations at a characteristic scale</li>
+                <li><strong>Adaptive:</strong> Scales are determined by the data, not predetermined</li>
+                <li><strong>Robust:</strong> Outliers have limited influence on the decomposition</li>
+                <li><strong>Complete:</strong> All signal components are captured in the IMF collection</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Pseudocode</h2>
+            <div class="algorithm-box">
+                <h4>Local Median EMD Sifting</h4>
+                <div class="algorithm-line"><span class="keyword">function</span> <span class="var">emd_local_median</span>(X, h_init, h_min):</div>
+                <div class="algorithm-line" style="padding-left: 2rem;">IMFs = []</div>
+                <div class="algorithm-line" style="padding-left: 2rem;">residual = X</div>
+                <div class="algorithm-line" style="padding-left: 2rem;">h = h_init</div>
+                <div class="algorithm-line" style="padding-left: 2rem;"></div>
+                <div class="algorithm-line" style="padding-left: 2rem;"><span class="keyword">while</span> h >= h_min:</div>
+                <div class="algorithm-line" style="padding-left: 3rem;"><span class="comment"># Compute local median with bandwidth h</span></div>
+                <div class="algorithm-line" style="padding-left: 3rem;">trend = local_median_smooth(residual, h)</div>
+                <div class="algorithm-line" style="padding-left: 3rem;"></div>
+                <div class="algorithm-line" style="padding-left: 3rem;"><span class="comment"># Store as IMF</span></div>
+                <div class="algorithm-line" style="padding-left: 3rem;">IMFs.append(trend)</div>
+                <div class="algorithm-line" style="padding-left: 3rem;"></div>
+                <div class="algorithm-line" style="padding-left: 3rem;"><span class="comment"># Update residual</span></div>
+                <div class="algorithm-line" style="padding-left: 3rem;">residual = residual - trend</div>
+                <div class="algorithm-line" style="padding-left: 3rem;"></div>
+                <div class="algorithm-line" style="padding-left: 3rem;"><span class="comment"># Halve bandwidth</span></div>
+                <div class="algorithm-line" style="padding-left: 3rem;">h = h / sqrt(2)</div>
+                <div class="algorithm-line" style="padding-left: 2rem;"></div>
+                <div class="algorithm-line" style="padding-left: 2rem;"><span class="keyword">return</span> IMFs, residual</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Next: See Results</h2>
+            <div class="nav-cards">
+                <a href="sifting.html" class="nav-card">
+                    <h4>Sifting Process</h4>
+                    <p>Visualizations of iterations 1-5 with charts</p>
+                </a>
+                <a href="dashboard.html" class="nav-card">
+                    <h4>Interactive Dashboard</h4>
+                    <p>Try the smoother with adjustable parameters</p>
+                </a>
+                <a href="theory.html" class="nav-card">
+                    <h4>Mathematical Theory</h4>
+                    <p>Kernel functions and weighted median details</p>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>EPA Local Median Smoothing | <a href="https://github.com/Digital-AI-Finance/epa_smoothing">GitHub</a></p>
+    </footer>
+
+    <script>
+        function toggleNav() {
+            document.getElementById('nav-menu').classList.toggle('active');
+        }
+    </script>
+</body>
+</html>

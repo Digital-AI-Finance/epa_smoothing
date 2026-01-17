@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team - EPA Local Median Smoothing</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <style>
+        .team-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+        .team-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+            text-align: center;
+            transition: transform 0.3s;
+        }
+        .team-card:hover {
+            transform: translateY(-5px);
+        }
+        .team-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        .team-card h4 {
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+        .team-card .affiliation {
+            color: #667eea;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+        .team-card .institution {
+            color: #666;
+            font-size: 0.85rem;
+        }
+        .institution-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+            align-items: center;
+            justify-items: center;
+        }
+        .institution-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem 1.5rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            text-align: center;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .institution-card h5 {
+            color: #667eea;
+            font-size: 0.95rem;
+            margin-bottom: 0.25rem;
+        }
+        .institution-card p {
+            color: #666;
+            font-size: 0.8rem;
+            margin: 0;
+        }
+        .resource-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+        .resource-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            padding: 1.5rem;
+            text-decoration: none;
+            color: white;
+            text-align: center;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .resource-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+        .resource-card h4 {
+            margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+        }
+        .resource-card p {
+            opacity: 0.9;
+            font-size: 0.85rem;
+            margin: 0;
+        }
+        .project-badge {
+            display: inline-block;
+            background: #f0f0ff;
+            color: #667eea;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar">
+    <div class="nav-container">
+        <a href="index.html" class="nav-logo">EPA Smoothing</a>
+        <button class="nav-toggle" onclick="toggleNav()">&#9776;</button>
+        <ul class="nav-menu" id="nav-menu">
+            <li><a href="index.html">Home</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="theory.html">Theory</a></li>
+            <li><a href="emd-intro.html">EMD Intro</a></li>
+            <li><a href="local-median.html">Local Median</a></li>
+            <li><a href="sifting.html">Sifting</a></li>
+            <li><a href="api.html">API</a></li>
+            <li><a href="code.html">Code</a></li>
+            <li><a href="examples.html">Examples</a></li>
+            <li><a href="team.html">Team</a></li>
+        </ul>
+    </div>
+</nav>
+
+    <section class="hero">
+        <h1>Research Team</h1>
+        <p>A New EMD Approach using Local Median Smoothing</p>
+    </section>
+
+    <div class="container">
+        <div class="section">
+            <h2>Authors</h2>
+            <p>This research is a collaboration across multiple institutions within the MSCA Digital Finance network.</p>
+
+            <div class="team-grid">
+                <div class="team-card">
+                    <div class="team-avatar">YS</div>
+                    <h4>Yezhou Sha</h4>
+                    <p class="affiliation">Lead Researcher</p>
+                    <p class="institution">Humboldt-Universitat zu Berlin</p>
+                    <span class="project-badge">MSCA Digital Finance</span>
+                </div>
+
+                <div class="team-card">
+                    <div class="team-avatar">VS</div>
+                    <h4>Volodia Spokoiny</h4>
+                    <p class="affiliation">Principal Investigator</p>
+                    <p class="institution">Weierstrass Institute (WIAS), Berlin</p>
+                </div>
+
+                <div class="team-card">
+                    <div class="team-avatar">WKH</div>
+                    <h4>Wolfgang Karl Hardle</h4>
+                    <p class="affiliation">Project Director</p>
+                    <p class="institution">Humboldt-Universitat zu Berlin, IDA</p>
+                    <span class="project-badge">IDA Director</span>
+                </div>
+
+                <div class="team-card">
+                    <div class="team-avatar">DSJ</div>
+                    <h4>David Siang-Li Jheng</h4>
+                    <p class="affiliation">Researcher</p>
+                    <p class="institution">National Yang Ming Chiao Tung University (NYCU), Taiwan</p>
+                </div>
+
+                <div class="team-card">
+                    <div class="team-avatar">MEI</div>
+                    <h4>Marc-Eduard Ionescu</h4>
+                    <p class="affiliation">Doctoral Researcher</p>
+                    <p class="institution">Bucharest University of Economic Studies (ASE)</p>
+                    <span class="project-badge">MSCA Digital Finance</span>
+                </div>
+
+                <div class="team-card">
+                    <div class="team-avatar">DTP</div>
+                    <h4>Daniel Traian Pele</h4>
+                    <p class="affiliation">Co-Investigator</p>
+                    <p class="institution">Bucharest University of Economic Studies (ASE)</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Affiliated Institutions</h2>
+            <p>Partner institutions in the MSCA Digital Finance research network.</p>
+
+            <div class="institution-grid">
+                <div class="institution-card">
+                    <h5>IDA</h5>
+                    <p>Institute for Digital Assets</p>
+                </div>
+                <div class="institution-card">
+                    <h5>Humboldt Berlin</h5>
+                    <p>Humboldt-Universitat zu Berlin</p>
+                </div>
+                <div class="institution-card">
+                    <h5>ASE Bucharest</h5>
+                    <p>Bucharest University of Economic Studies</p>
+                </div>
+                <div class="institution-card">
+                    <h5>SGH Warsaw</h5>
+                    <p>Warsaw School of Economics</p>
+                </div>
+                <div class="institution-card">
+                    <h5>Edinburgh</h5>
+                    <p>University of Edinburgh</p>
+                </div>
+                <div class="institution-card">
+                    <h5>NYCU Taiwan</h5>
+                    <p>National Yang Ming Chiao Tung University</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Resources</h2>
+            <p>Related platforms and research infrastructure.</p>
+
+            <div class="resource-grid">
+                <a href="https://theIDA.net" class="resource-card" target="_blank">
+                    <h4>theIDA.net</h4>
+                    <p>Institute for Digital Assets - Research hub for digital finance and blockchain</p>
+                </a>
+                <a href="https://Quantinar.com" class="resource-card" target="_blank">
+                    <h4>Quantinar.com</h4>
+                    <p>Educational platform for quantitative finance and data science</p>
+                </a>
+                <a href="https://Quantlet.com" class="resource-card" target="_blank">
+                    <h4>Quantlet.com</h4>
+                    <p>Code repository for reproducible research in statistics and finance</p>
+                </a>
+                <a href="https://Blockchain-Research-Center.com" class="resource-card" target="_blank">
+                    <h4>Blockchain Research Center</h4>
+                    <p>Interdisciplinary research on blockchain technology and applications</p>
+                </a>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Project Context</h2>
+            <p>This work is part of the <strong>MSCA Digital Finance</strong> project, funded by the Marie Sklodowska-Curie Actions (MSCA) under the European Union's Horizon programme.</p>
+
+            <div class="example-box">
+                <h4>Research Focus</h4>
+                <p>The project develops robust signal decomposition methods for analyzing non-stationary financial time series, with applications to:</p>
+                <ul style="margin-left: 2rem; margin-top: 0.5rem;">
+                    <li>Cryptocurrency price dynamics</li>
+                    <li>High-frequency trading data</li>
+                    <li>Volatility estimation in complex markets</li>
+                    <li>Trend extraction from noisy financial signals</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Citation</h2>
+            <div class="formula">
+                <p>Sha, Y., Spokoiny, V., Hardle, W. K., Jheng, D. S.-L., Ionescu, M.-E., &amp; Pele, D. T. (2024). A New EMD Approach using Local Median Smoothing. <em>Working Paper</em>.</p>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>EPA Local Median Smoothing | <a href="https://github.com/Digital-AI-Finance/epa_smoothing">GitHub</a></p>
+    </footer>
+
+    <script>
+        function toggleNav() {
+            document.getElementById('nav-menu').classList.toggle('active');
+        }
+    </script>
+</body>
+</html>
