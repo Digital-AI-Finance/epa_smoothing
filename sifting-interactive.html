@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Sifting - EPA Local Median Smoothing</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.5rem;
+            margin: 0.5rem 0;
+        }
+        .control-item {
+            background: #f8f9fa;
+            padding: 0.4rem;
+            border-radius: 4px;
+        }
+        .control-item label {
+            display: block;
+            font-weight: 500;
+            font-size: 0.8rem;
+            margin-bottom: 0.2rem;
+            color: #667eea;
+        }
+        .control-item input[type="range"] {
+            width: 100%;
+        }
+        .control-item .value-display {
+            font-family: monospace;
+            background: white;
+            padding: 0.15rem 0.3rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            display: inline-block;
+            min-width: 50px;
+            text-align: center;
+        }
+        .btn-row {
+            display: flex;
+            gap: 0.3rem;
+            margin: 0.4rem 0;
+            flex-wrap: wrap;
+        }
+        .ctrl-btn {
+            padding: 0.3rem 0.6rem;
+            border: 1px solid #667eea;
+            background: white;
+            cursor: pointer;
+            font-size: 0.8rem;
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+        .ctrl-btn:hover {
+            background: #f0f0ff;
+        }
+        .ctrl-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        .bandwidth-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+            margin: 0.4rem 0;
+        }
+        .bw-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.75rem;
+        }
+        .bw-label {
+            width: 30px;
+            font-weight: 500;
+            color: #667eea;
+        }
+        .bw-track {
+            flex: 1;
+            height: 12px;
+            background: #e0e0e0;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .bw-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 2px;
+            transition: width 0.3s;
+        }
+        .bw-value {
+            width: 45px;
+            font-family: monospace;
+            font-size: 0.7rem;
+        }
+        .bw-bar.current .bw-fill {
+            background: #2ca02c;
+        }
+        .bw-bar.current .bw-label {
+            color: #2ca02c;
+            font-weight: bold;
+        }
+        .chart-tall {
+            width: 100%;
+            min-height: 600px;
+        }
+        .mse-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 0.3rem;
+            margin: 0.4rem 0;
+        }
+        .mse-item {
+            text-align: center;
+            padding: 0.3rem;
+            border-radius: 4px;
+            background: #f0f0f0;
+        }
+        .mse-item.highlight {
+            background: #e8f5e9;
+            border: 1px solid #4caf50;
+        }
+        .mse-item .label {
+            font-size: 0.7rem;
+            color: #666;
+        }
+        .mse-item .value {
+            font-size: 0.85rem;
+            font-weight: bold;
+            font-family: monospace;
+        }
+        .signal-info {
+            background: #f8f9fa;
+            border-left: 3px solid #667eea;
+            padding: 0.4rem;
+            margin: 0.4rem 0;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar">
+    <div class="nav-container">
+        <a href="index.html" class="nav-logo">EPA Smoothing</a>
+        <button class="nav-toggle" onclick="toggleNav()">&#9776;</button>
+        <ul class="nav-menu" id="nav-menu">
+            <li><a href="index.html">Home</a></li>
+            <li><a href="dashboard.html">Dashboard</a></li>
+            <li><a href="theory.html">Theory</a></li>
+            <li><a href="emd-intro.html">EMD Intro</a></li>
+            <li><a href="local-median.html">Local Median</a></li>
+            <li><a href="sifting.html">Sifting</a></li>
+            <li><a href="sifting-interactive.html">Sifting Demo</a></li>
+            <li><a href="api.html">API</a></li>
+            <li><a href="code.html">Code</a></li>
+            <li><a href="examples.html">Examples</a></li>
+            <li><a href="team.html">Team</a></li>
+        </ul>
+    </div>
+</nav>
+
+    <section class="hero">
+        <h1>Interactive Sifting Demo</h1>
+        <p>Explore EMD decomposition with adjustable parameters and real-time visualization</p>
+    </section>
+
+    <div class="container">
+        <div class="section">
+            <h2>Controls</h2>
+            <div class="controls-grid">
+                <div class="control-item">
+                    <label>Initial Bandwidth h<sub>1</sub></label>
+                    <input type="range" id="h1-slider" min="0.05" max="0.2" step="0.01" value="0.1">
+                    <span id="h1-value" class="value-display">0.10</span>
+                </div>
+                <div class="control-item">
+                    <label>Iterations</label>
+                    <input type="range" id="iter-slider" min="1" max="6" step="1" value="5">
+                    <span id="iter-value" class="value-display">5</span>
+                </div>
+                <div class="control-item">
+                    <label>Noise Level</label>
+                    <input type="range" id="noise-slider" min="0" max="0.5" step="0.05" value="0.2">
+                    <span id="noise-value" class="value-display">0.20</span>
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="ctrl-btn" onclick="runSifting()">Update</button>
+                <button class="ctrl-btn" onclick="animateSifting()">Animate</button>
+                <button class="ctrl-btn" onclick="regenerateSignal()">New Signal</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Bandwidth Schedule</h2>
+            <p>Each iteration halves the bandwidth: \(h_{k+1} = h_k / \sqrt{2}\)</p>
+            <div id="bandwidth-display" class="bandwidth-bars"></div>
+        </div>
+
+        <div class="section">
+            <h2>AM-FM Test Signal</h2>
+            <div class="signal-info">
+                <strong>Signal:</strong> \(y(x) = [1 + 0.5\sin(4\pi x)] \sin(2\pi(6x + 12x^2)) + \sigma\varepsilon\)<br>
+                <strong>Properties:</strong> Amplitude modulation (period 0.5) + frequency chirp (6-30 Hz)
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Decomposition</h2>
+            <div id="sifting-chart" class="chart-tall"></div>
+        </div>
+
+        <div class="section">
+            <h2>Reconstruction Quality</h2>
+            <p>Sum of extracted trends compared to original noisy signal</p>
+            <div id="mse-display" class="mse-grid"></div>
+            <div id="reconstruction-chart" style="width:100%; height:200px;"></div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>EPA Local Median Smoothing | <a href="https://github.com/Digital-AI-Finance/epa_smoothing">GitHub</a></p>
+    </footer>
+
+    <script>
+        function toggleNav() {
+            document.getElementById('nav-menu').classList.toggle('active');
+        }
+
+        // ============================================
+        // Core Algorithm Functions
+        // ============================================
+
+        function epanechnikov(u) {
+            return Math.abs(u) <= 1 ? 0.75 * (1 - u * u) : 0;
+        }
+
+        function weightedMedian(values, weights) {
+            if (values.length === 0) return NaN;
+            const pairs = values.map((v, i) => ({ v, w: weights[i] }))
+                .filter(p => p.w > 0)
+                .sort((a, b) => a.v - b.v);
+            if (pairs.length === 0) return NaN;
+            const totalW = pairs.reduce((s, p) => s + p.w, 0);
+            let cumW = 0;
+            for (let i = 0; i < pairs.length; i++) {
+                cumW += pairs[i].w / totalW;
+                if (cumW >= 0.5) return pairs[i].v;
+            }
+            return pairs[pairs.length - 1].v;
+        }
+
+        function localMedian(x, y, h) {
+            return x.map((xi) => {
+                const weights = x.map(xj => epanechnikov((xj - xi) / h));
+                return weightedMedian(y, weights);
+            });
+        }
+
+        // ============================================
+        // AM-FM Signal Generation
+        // ============================================
+
+        const N = 200;
+        const xData = Array.from({ length: N }, (_, i) => i / (N - 1));
+        let cleanSignal, noisySignal, currentSeed = 42;
+
+        function seededRandom(seed) {
+            return function() {
+                seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+                return seed / 0x7fffffff;
+            };
+        }
+
+        function boxMuller(rng) {
+            const u1 = rng(), u2 = rng();
+            return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+        }
+
+        function generateAMFM(sigma) {
+            const rng = seededRandom(currentSeed);
+            cleanSignal = xData.map(x => {
+                const A = 1 + 0.5 * Math.sin(4 * Math.PI * x);
+                const phi = 2 * Math.PI * (6 * x + 12 * x * x);
+                return A * Math.sin(phi);
+            });
+            noisySignal = cleanSignal.map(y => y + boxMuller(rng) * sigma);
+        }
+
+        function regenerateSignal() {
+            currentSeed = Math.floor(Math.random() * 100000);
+            runSifting();
+        }
+
+        // ============================================
+        // Sifting Algorithm
+        // ============================================
+
+        function fullSifting(h1, numIter) {
+            const results = [];
+            let residual = [...noisySignal];
+            let h = h1;
+            for (let k = 0; k < numIter; k++) {
+                const trend = localMedian(xData, residual, h);
+                const imf = residual.map((r, i) => r - trend[i]);
+                results.push({ k: k + 1, h, input: [...residual], trend, imf });
+                residual = imf;
+                h = h / Math.sqrt(2);
+            }
+            return results;
+        }
+
+        // ============================================
+        // Visualization
+        // ============================================
+
+        function updateBandwidthDisplay(h1, numIter, currentIter = -1) {
+            const container = document.getElementById('bandwidth-display');
+            container.innerHTML = '';
+            let h = h1;
+            for (let k = 1; k <= numIter; k++) {
+                const pct = (h / 0.2) * 100;
+                const isCurrent = k === currentIter;
+                container.innerHTML += `
+                    <div class="bw-bar ${isCurrent ? 'current' : ''}">
+                        <span class="bw-label">h${k}</span>
+                        <div class="bw-track"><div class="bw-fill" style="width:${pct}%"></div></div>
+                        <span class="bw-value">${h.toFixed(4)}</span>
+                    </div>`;
+                h = h / Math.sqrt(2);
+            }
+        }
+
+        function plotSifting(results) {
+            const traces = [];
+            const numPlots = results.length + 2;
+
+            // Plot 0: Original signal
+            traces.push({
+                x: xData, y: noisySignal, mode: 'lines', name: 'Noisy',
+                line: { color: '#999', width: 1 }, xaxis: 'x', yaxis: 'y'
+            });
+            traces.push({
+                x: xData, y: cleanSignal, mode: 'lines', name: 'Clean',
+                line: { color: '#667eea', width: 2, dash: 'dash' }, xaxis: 'x', yaxis: 'y'
+            });
+
+            // Plots 1 to K: Each sifting iteration
+            results.forEach((r, idx) => {
+                const yaxis = `y${idx + 2}`;
+                traces.push({
+                    x: xData, y: r.input, mode: 'lines', name: `Input ${r.k}`,
+                    line: { color: '#ccc', width: 1 }, xaxis: 'x', yaxis,
+                    showlegend: idx === 0
+                });
+                traces.push({
+                    x: xData, y: r.trend, mode: 'lines', name: `Trend ${r.k}`,
+                    line: { color: '#667eea', width: 2 }, xaxis: 'x', yaxis,
+                    showlegend: idx === 0
+                });
+            });
+
+            // Plot K+1: Sum of trends vs original
+            const sumTrends = xData.map((_, i) =>
+                results.reduce((s, r) => s + r.trend[i], 0)
+            );
+            traces.push({
+                x: xData, y: noisySignal, mode: 'lines', name: 'Noisy',
+                line: { color: '#999', width: 1 }, xaxis: 'x', yaxis: `y${numPlots}`,
+                showlegend: false
+            });
+            traces.push({
+                x: xData, y: sumTrends, mode: 'lines', name: 'Sum of Trends',
+                line: { color: '#2ca02c', width: 2 }, xaxis: 'x', yaxis: `y${numPlots}`
+            });
+
+            // Layout with subplots
+            const plotHeight = 120;
+            const layout = {
+                height: numPlots * plotHeight + 50,
+                margin: { t: 30, r: 30, b: 40, l: 50 },
+                showlegend: true,
+                legend: { x: 1, y: 1, xanchor: 'right' },
+                annotations: []
+            };
+
+            // Configure y-axes for subplots
+            const gap = 0.02;
+            const plotSize = (1 - gap * (numPlots - 1)) / numPlots;
+            for (let i = 0; i < numPlots; i++) {
+                const domain = [1 - (i + 1) * (plotSize + gap) + gap, 1 - i * (plotSize + gap) - gap];
+                const yaxisName = i === 0 ? 'yaxis' : `yaxis${i + 1}`;
+                let title = '';
+                if (i === 0) title = 'Original';
+                else if (i <= results.length) title = `Iter ${i} (h=${results[i-1].h.toFixed(3)})`;
+                else title = 'Reconstruction';
+                layout[yaxisName] = { domain, title: { text: title, font: { size: 10 } }, tickfont: { size: 8 } };
+            }
+            layout.xaxis = { title: 'x', tickfont: { size: 8 } };
+
+            Plotly.newPlot('sifting-chart', traces, layout, { responsive: true });
+
+            // Update MSE display
+            updateMSE(results, sumTrends);
+        }
+
+        function updateMSE(results, sumTrends) {
+            const container = document.getElementById('mse-display');
+            const mseVsClean = xData.reduce((s, _, i) =>
+                s + (sumTrends[i] - cleanSignal[i]) ** 2, 0) / N;
+            const mseVsNoisy = xData.reduce((s, _, i) =>
+                s + (sumTrends[i] - noisySignal[i]) ** 2, 0) / N;
+            container.innerHTML = `
+                <div class="mse-item highlight">
+                    <div class="label">MSE vs Clean</div>
+                    <div class="value">${mseVsClean.toFixed(4)}</div>
+                </div>
+                <div class="mse-item">
+                    <div class="label">MSE vs Noisy</div>
+                    <div class="value">${mseVsNoisy.toFixed(4)}</div>
+                </div>
+            `;
+
+            // Reconstruction chart
+            Plotly.newPlot('reconstruction-chart', [
+                { x: xData, y: cleanSignal, mode: 'lines', name: 'Clean', line: { color: '#667eea', dash: 'dash' } },
+                { x: xData, y: sumTrends, mode: 'lines', name: 'Reconstructed', line: { color: '#2ca02c', width: 2 } }
+            ], {
+                margin: { t: 20, r: 20, b: 30, l: 50 },
+                legend: { x: 0, y: 1 },
+                xaxis: { title: 'x' },
+                yaxis: { title: 'y' }
+            }, { responsive: true });
+        }
+
+        // ============================================
+        // Event Handlers
+        // ============================================
+
+        function runSifting() {
+            const h1 = parseFloat(document.getElementById('h1-slider').value);
+            const numIter = parseInt(document.getElementById('iter-slider').value);
+            const sigma = parseFloat(document.getElementById('noise-slider').value);
+
+            generateAMFM(sigma);
+            const results = fullSifting(h1, numIter);
+            updateBandwidthDisplay(h1, numIter);
+            plotSifting(results);
+        }
+
+        function animateSifting() {
+            const h1 = parseFloat(document.getElementById('h1-slider').value);
+            const numIter = parseInt(document.getElementById('iter-slider').value);
+            const sigma = parseFloat(document.getElementById('noise-slider').value);
+
+            generateAMFM(sigma);
+            let currentIter = 0;
+
+            function step() {
+                currentIter++;
+                if (currentIter > numIter) return;
+                const results = fullSifting(h1, currentIter);
+                updateBandwidthDisplay(h1, numIter, currentIter);
+                plotSifting(results);
+                setTimeout(step, 800);
+            }
+            step();
+        }
+
+        // Slider event listeners
+        document.getElementById('h1-slider').oninput = function() {
+            document.getElementById('h1-value').textContent = parseFloat(this.value).toFixed(2);
+        };
+        document.getElementById('iter-slider').oninput = function() {
+            document.getElementById('iter-value').textContent = this.value;
+        };
+        document.getElementById('noise-slider').oninput = function() {
+            document.getElementById('noise-value').textContent = parseFloat(this.value).toFixed(2);
+        };
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(runSifting, 100);
+        });
+    </script>
+</body>
+</html>
