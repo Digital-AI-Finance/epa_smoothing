@@ -203,8 +203,8 @@
                 </div>
                 <div class="control-item">
                     <label>Iterations</label>
-                    <input type="range" id="iter-slider" min="1" max="6" step="1" value="5">
-                    <span id="iter-value" class="value-display">5</span>
+                    <input type="range" id="iter-slider" min="1" max="100" step="1" value="10">
+                    <span id="iter-value" class="value-display">10</span>
                 </div>
                 <div class="control-item">
                     <label>Noise Level</label>
@@ -226,18 +226,12 @@
 
         <div class="section">
             <div class="k-slider-container control-item">
-                <label>Iteration k</label>
-                <input type="range" id="k-slider" min="1" max="5" step="1" value="1">
+                <label>Iteration k (show trends 1..k)</label>
+                <input type="range" id="k-slider" min="1" max="100" step="1" value="1">
                 <span id="k-value" class="value-display">1</span>
             </div>
             <div class="chart-row">
-                <div id="chart-original" class="chart-panel"></div>
-            </div>
-            <div class="chart-row">
-                <div id="chart-iteration" class="chart-panel"></div>
-            </div>
-            <div class="chart-row">
-                <div id="chart-reconstruction" class="chart-panel"></div>
+                <div id="chart-main" style="width: 100%; height: 400px;"></div>
             </div>
         </div>
 
@@ -362,58 +356,88 @@
         function updateBandwidthDisplay(h1, numIter, decayFactor, currentIter = -1) {
             const container = document.getElementById('bandwidth-display');
             container.innerHTML = '';
+
+            // Calculate all h values
+            const hValues = [];
             let h = h1;
             for (let k = 1; k <= numIter; k++) {
-                const pct = Math.min((h / 0.5) * 100, 100);
-                const isCurrent = k === currentIter;
-                container.innerHTML += `
-                    <div class="bw-bar ${isCurrent ? 'current' : ''}">
-                        <span class="bw-label">h${k}</span>
-                        <div class="bw-track"><div class="bw-fill" style="width:${pct}%"></div></div>
-                        <span class="bw-value">${h.toFixed(4)}</span>
-                    </div>`;
+                hValues.push({ k, h });
                 h = h / decayFactor;
             }
-        }
 
-        function chartLayout(title) {
-            return {
-                height: 180,
-                margin: { t: 30, r: 20, b: 30, l: 50 },
-                title: { text: title, font: { size: 12 } },
-                showlegend: true,
-                legend: { x: 1, y: 1, xanchor: 'right', font: { size: 9 } },
-                xaxis: { tickfont: { size: 9 }, showgrid: true, gridcolor: '#eee' },
-                yaxis: { tickfont: { size: 9 }, showgrid: true, gridcolor: '#eee' }
-            };
+            // Show limited bars: first 3, current, last 2 (if numIter > 8)
+            const showBars = numIter <= 8 ? hValues : [
+                ...hValues.slice(0, 3),
+                ...(currentIter > 3 && currentIter < numIter - 1 ? [hValues[currentIter - 1]] : []),
+                ...hValues.slice(-2)
+            ];
+
+            showBars.forEach((item, idx) => {
+                const pct = Math.min((item.h / 0.5) * 100, 100);
+                const isCurrent = item.k === currentIter;
+                // Add ellipsis indicator
+                if (numIter > 8 && idx === 3 && currentIter <= 3) {
+                    container.innerHTML += `<div class="bw-bar"><span class="bw-label">...</span></div>`;
+                }
+                container.innerHTML += `
+                    <div class="bw-bar ${isCurrent ? 'current' : ''}">
+                        <span class="bw-label">h${item.k}</span>
+                        <div class="bw-track"><div class="bw-fill" style="width:${pct}%"></div></div>
+                        <span class="bw-value">${item.h.toFixed(4)}</span>
+                    </div>`;
+                if (numIter > 8 && idx === 2 && currentIter > 3) {
+                    container.innerHTML += `<div class="bw-bar"><span class="bw-label">...</span></div>`;
+                }
+            });
         }
 
         let cachedResults = null;
 
         function plotSifting(results, currentK) {
             cachedResults = results;
-            const r = results[currentK - 1];
 
-            // Chart 1: Original Signal
-            Plotly.newPlot('chart-original', [
-                { x: xData, y: cleanSignal, mode: 'lines', name: 'Clean', line: { color: '#3b82f6', width: 2 } },
-                { x: xData, y: noisySignal, mode: 'lines', name: 'Noisy', line: { color: '#999', width: 1 } }
-            ], chartLayout('Original Signal (Clean + Noise)'), { responsive: true });
+            // Build traces array
+            const traces = [
+                { x: xData, y: noisySignal, mode: 'lines', name: 'Noisy', line: { color: '#999', width: 1 } },
+                { x: xData, y: cleanSignal, mode: 'lines', name: 'Clean', line: { color: '#3b82f6', width: 2, dash: 'dash' } }
+            ];
 
-            // Chart 2: Current Iteration
-            Plotly.newPlot('chart-iteration', [
-                { x: xData, y: r.input, mode: 'lines', name: 'Input', line: { color: '#aaa', width: 1 } },
-                { x: xData, y: r.trend, mode: 'lines', name: `Trend (h=${r.h.toFixed(3)})`, line: { color: '#667eea', width: 2 } }
-            ], chartLayout(`Iteration k=${currentK}`), { responsive: true });
+            // Add all trends from 1 to k with color gradient
+            for (let i = 0; i < currentK; i++) {
+                const r = results[i];
+                const alpha = 0.3 + (i / Math.max(currentK, 1)) * 0.7;
+                const showInLegend = (currentK <= 10) || (i === 0) || (i === currentK - 1);
+                traces.push({
+                    x: xData, y: r.trend,
+                    mode: 'lines',
+                    name: `k=${r.k} (h=${r.h.toFixed(3)})`,
+                    line: { color: `rgba(102, 126, 234, ${alpha})`, width: 1.5 },
+                    showlegend: showInLegend
+                });
+            }
 
-            // Chart 3: Reconstruction (sum of trends 1..k)
+            // Add reconstruction (sum of all trends up to k)
             const sumTrends = xData.map((_, i) =>
                 results.slice(0, currentK).reduce((s, res) => s + res.trend[i], 0)
             );
-            Plotly.newPlot('chart-reconstruction', [
-                { x: xData, y: noisySignal, mode: 'lines', name: 'Noisy', line: { color: '#999', width: 1 } },
-                { x: xData, y: sumTrends, mode: 'lines', name: 'Sum of Trends', line: { color: '#059669', width: 2 } }
-            ], chartLayout(`Reconstruction (k=1..${currentK})`), { responsive: true });
+            traces.push({
+                x: xData, y: sumTrends,
+                mode: 'lines',
+                name: 'Sum',
+                line: { color: '#059669', width: 2.5 }
+            });
+
+            const layout = {
+                height: 400,
+                margin: { t: 40, r: 20, b: 40, l: 50 },
+                title: { text: `Sifting: k=1..${currentK} iterations`, font: { size: 14 } },
+                showlegend: true,
+                legend: { x: 1, y: 1, xanchor: 'right', font: { size: 9 } },
+                xaxis: { title: 'x', tickfont: { size: 10 }, showgrid: true, gridcolor: '#eee' },
+                yaxis: { title: 'y', tickfont: { size: 10 }, showgrid: true, gridcolor: '#eee' }
+            };
+
+            Plotly.react('chart-main', traces, layout, { responsive: true });
 
             // Update MSE display
             updateMSE(results.slice(0, currentK), sumTrends);
