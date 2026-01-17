@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="assets/css/style.css">
     <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <style>
         .math-box {
             background: linear-gradient(135deg, #f5f7ff 0%, #fff 100%);
@@ -135,6 +136,151 @@
         .highlight-box strong {
             color: #856404;
         }
+        /* Interactive Demo Styles */
+        .viz-tabs {
+            display: flex;
+            gap: 0.25rem;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 0.5rem;
+        }
+        .viz-tab {
+            padding: 0.4rem 0.8rem;
+            border: none;
+            background: #f0f0f0;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            border-radius: 4px 4px 0 0;
+            transition: all 0.2s;
+        }
+        .viz-tab:hover {
+            background: #e0e0e0;
+        }
+        .viz-tab.active {
+            background: #667eea;
+            color: white;
+        }
+        .viz-content {
+            display: none;
+        }
+        .viz-content.active {
+            display: block;
+        }
+        .viz-chart {
+            width: 100%;
+            height: 300px;
+        }
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0.4rem 0;
+            flex-wrap: wrap;
+        }
+        .control-row label {
+            font-weight: 500;
+            font-size: 0.85rem;
+            min-width: 80px;
+        }
+        .control-row input[type="range"] {
+            flex: 1;
+            min-width: 150px;
+        }
+        .control-row .value-display {
+            font-family: monospace;
+            background: #f0f0f0;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            min-width: 50px;
+            text-align: center;
+        }
+        .outlier-btns {
+            display: flex;
+            gap: 0.25rem;
+        }
+        .outlier-btn {
+            padding: 0.3rem 0.6rem;
+            border: 1px solid #667eea;
+            background: white;
+            cursor: pointer;
+            font-size: 0.8rem;
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+        .outlier-btn:hover {
+            background: #f0f0ff;
+        }
+        .outlier-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        .mse-panel {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.4rem;
+        }
+        .mse-card {
+            flex: 1;
+            padding: 0.4rem;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .mse-card.median {
+            background: #e8f5e9;
+            border: 1px solid #4caf50;
+        }
+        .mse-card.mean {
+            background: #ffebee;
+            border: 1px solid #f44336;
+        }
+        .mse-card .label {
+            font-size: 0.75rem;
+            color: #666;
+        }
+        .mse-card .value {
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        .mse-card.median .value { color: #2e7d32; }
+        .mse-card.mean .value { color: #c62828; }
+        .calc-panel {
+            background: #f8f9fa;
+            border-radius: 4px;
+            padding: 0.4rem;
+            margin-top: 0.4rem;
+            font-size: 0.8rem;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .calc-panel h5 {
+            margin-bottom: 0.3rem;
+            color: #667eea;
+        }
+        .calc-table {
+            width: 100%;
+            font-size: 0.75rem;
+        }
+        .calc-table th {
+            background: #667eea;
+            color: white;
+            padding: 2px 4px;
+        }
+        .calc-table td {
+            padding: 2px 4px;
+            text-align: center;
+        }
+        .calc-table tr.median-row {
+            background: #e8f5e9;
+            font-weight: bold;
+        }
+        .click-hint {
+            color: #666;
+            font-style: italic;
+            font-size: 0.8rem;
+            text-align: center;
+            margin-bottom: 0.3rem;
+        }
     </style>
 </head>
 <body>
@@ -216,6 +362,74 @@
                     <td>Requires sorting</td>
                 </tr>
             </table>
+        </div>
+
+        <div class="section">
+            <h2>Interactive Demonstration</h2>
+            <p>Explore the local median approach with these interactive visualizations.</p>
+
+            <div class="viz-tabs">
+                <button class="viz-tab active" onclick="showViz('point')">Point Demo</button>
+                <button class="viz-tab" onclick="showViz('bandwidth')">Bandwidth</button>
+                <button class="viz-tab" onclick="showViz('comparison')">Comparison</button>
+            </div>
+
+            <div id="viz-point" class="viz-content active">
+                <p class="click-hint">Click anywhere on the chart to see the weighted median calculation at that point</p>
+                <div id="point-chart" class="viz-chart"></div>
+                <div class="control-row">
+                    <label>Bandwidth h:</label>
+                    <input type="range" id="point-h-slider" min="0.3" max="1.5" step="0.1" value="0.8">
+                    <span id="point-h-value" class="value-display">0.80</span>
+                </div>
+                <div id="calc-panel" class="calc-panel" style="display:none;">
+                    <h5>Weighted Median Calculation at t = <span id="calc-t">-</span></h5>
+                    <table class="calc-table">
+                        <thead><tr><th>y<sub>i</sub></th><th>w<sub>i</sub></th><th>Cum. W</th></tr></thead>
+                        <tbody id="calc-tbody"></tbody>
+                    </table>
+                    <p style="margin-top:0.3rem;">Weighted Median = <strong id="calc-result">-</strong></p>
+                </div>
+            </div>
+
+            <div id="viz-bandwidth" class="viz-content">
+                <div id="bandwidth-chart" class="viz-chart"></div>
+                <div class="control-row">
+                    <label>Bandwidth h:</label>
+                    <input type="range" id="bw-slider" min="0.1" max="1.5" step="0.05" value="0.5">
+                    <span id="bw-value" class="value-display">0.50</span>
+                    <button class="outlier-btn" onclick="animateBandwidth()">Animate</button>
+                </div>
+                <div class="mse-panel">
+                    <div class="mse-card median">
+                        <div class="label">MSE (Local Median)</div>
+                        <div class="value" id="bw-mse">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="viz-comparison" class="viz-content">
+                <div id="comparison-chart" class="viz-chart"></div>
+                <div class="control-row">
+                    <label>Outliers:</label>
+                    <div class="outlier-btns">
+                        <button class="outlier-btn active" onclick="setOutliers(0)">0%</button>
+                        <button class="outlier-btn" onclick="setOutliers(0.05)">5%</button>
+                        <button class="outlier-btn" onclick="setOutliers(0.1)">10%</button>
+                        <button class="outlier-btn" onclick="setOutliers(0.2)">20%</button>
+                    </div>
+                </div>
+                <div class="mse-panel">
+                    <div class="mse-card median">
+                        <div class="label">MSE (Local Median)</div>
+                        <div class="value" id="cmp-mse-median">-</div>
+                    </div>
+                    <div class="mse-card mean">
+                        <div class="label">MSE (Local Mean)</div>
+                        <div class="value" id="cmp-mse-mean">-</div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="section">
@@ -432,6 +646,231 @@
         function toggleNav() {
             document.getElementById('nav-menu').classList.toggle('active');
         }
+
+        // ============================================
+        // Core Algorithm Functions
+        // ============================================
+
+        function epanechnikov(u) {
+            return Math.abs(u) <= 1 ? 0.75 * (1 - u * u) : 0;
+        }
+
+        function weightedMedian(values, weights) {
+            if (values.length === 0) return NaN;
+            const pairs = values.map((v, i) => ({ v, w: weights[i] }))
+                .filter(p => p.w > 0)
+                .sort((a, b) => a.v - b.v);
+            if (pairs.length === 0) return NaN;
+            const totalW = pairs.reduce((s, p) => s + p.w, 0);
+            let cumW = 0;
+            for (let i = 0; i < pairs.length; i++) {
+                cumW += pairs[i].w / totalW;
+                if (cumW >= 0.5) return pairs[i].v;
+            }
+            return pairs[pairs.length - 1].v;
+        }
+
+        function localMedian(x, y, h) {
+            return x.map((xi) => {
+                const weights = x.map(xj => epanechnikov((xj - xi) / h));
+                return weightedMedian(y, weights);
+            });
+        }
+
+        function localMean(x, y, h) {
+            return x.map((xi) => {
+                const weights = x.map(xj => epanechnikov((xj - xi) / h));
+                const sumW = weights.reduce((s, w) => s + w, 0);
+                if (sumW === 0) return NaN;
+                const sumWY = weights.reduce((s, w, i) => s + w * y[i], 0);
+                return sumWY / sumW;
+            });
+        }
+
+        function mse(predicted, actual) {
+            const valid = predicted.map((p, i) => [p, actual[i]]).filter(([p, a]) => !isNaN(p) && !isNaN(a));
+            if (valid.length === 0) return NaN;
+            return valid.reduce((s, [p, a]) => s + (p - a) ** 2, 0) / valid.length;
+        }
+
+        // ============================================
+        // Data Generation
+        // ============================================
+
+        const N = 100;
+        const xData = Array.from({ length: N }, (_, i) => i * 2 * Math.PI / (N - 1));
+        const trueSignal = xData.map(x => Math.sin(x) + 0.5 * Math.cos(2 * x));
+        const noise = 0.25;
+        let currentOutlierFrac = 0;
+        let yData, yDataNoisy;
+
+        function seededRandom(seed) {
+            return function() {
+                seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+                return seed / 0x7fffffff;
+            };
+        }
+
+        function generateNoisyData(outlierFrac) {
+            const rng = seededRandom(42);
+            yDataNoisy = trueSignal.map((y, i) => {
+                let val = y + (rng() - 0.5) * 2 * noise;
+                if (rng() < outlierFrac) {
+                    val += (rng() > 0.5 ? 1 : -1) * 2;
+                }
+                return val;
+            });
+            yData = [...yDataNoisy];
+        }
+
+        generateNoisyData(0);
+
+        // ============================================
+        // Tab Switching
+        // ============================================
+
+        function showViz(vizId) {
+            document.querySelectorAll('.viz-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.viz-content').forEach(c => c.classList.remove('active'));
+            document.querySelector(`[onclick="showViz('${vizId}')"]`).classList.add('active');
+            document.getElementById('viz-' + vizId).classList.add('active');
+            if (vizId === 'point') initPointDemo();
+            else if (vizId === 'bandwidth') initBandwidthDemo();
+            else if (vizId === 'comparison') initComparisonDemo();
+        }
+
+        // ============================================
+        // Point Demo
+        // ============================================
+
+        let pointH = 0.8;
+
+        function initPointDemo() {
+            const trace1 = { x: xData, y: yData, mode: 'markers', type: 'scatter', name: 'Data', marker: { size: 6, color: '#999' } };
+            const trace2 = { x: xData, y: trueSignal, mode: 'lines', type: 'scatter', name: 'True', line: { color: '#667eea', dash: 'dash', width: 2 } };
+            const layout = { margin: { t: 20, r: 20, b: 40, l: 50 }, xaxis: { title: 'x' }, yaxis: { title: 'y' }, legend: { x: 0, y: 1 }, hovermode: 'closest' };
+            Plotly.newPlot('point-chart', [trace1, trace2], layout, { responsive: true });
+            document.getElementById('point-chart').on('plotly_click', onPointClick);
+            document.getElementById('point-h-slider').oninput = function() {
+                pointH = parseFloat(this.value);
+                document.getElementById('point-h-value').textContent = pointH.toFixed(2);
+            };
+        }
+
+        function onPointClick(data) {
+            const t0 = data.points[0].x;
+            const h = pointH;
+            const inWindow = xData.map((x, i) => ({ x, y: yData[i], i })).filter(p => Math.abs(p.x - t0) <= h);
+            const weights = inWindow.map(p => epanechnikov((p.x - t0) / h));
+            const totalW = weights.reduce((s, w) => s + w, 0);
+            const sorted = inWindow.map((p, i) => ({ y: p.y, w: weights[i] })).sort((a, b) => a.y - b.y);
+            let cumW = 0, medianIdx = 0;
+            for (let i = 0; i < sorted.length; i++) {
+                cumW += sorted[i].w / totalW;
+                if (cumW >= 0.5) { medianIdx = i; break; }
+            }
+            const wMedian = sorted[medianIdx].y;
+
+            // Update calc panel
+            document.getElementById('calc-panel').style.display = 'block';
+            document.getElementById('calc-t').textContent = t0.toFixed(2);
+            document.getElementById('calc-result').textContent = wMedian.toFixed(4);
+            const tbody = document.getElementById('calc-tbody');
+            tbody.innerHTML = '';
+            cumW = 0;
+            sorted.forEach((p, i) => {
+                cumW += p.w / totalW;
+                const tr = document.createElement('tr');
+                if (i === medianIdx) tr.className = 'median-row';
+                tr.innerHTML = `<td>${p.y.toFixed(3)}</td><td>${(p.w / totalW).toFixed(3)}</td><td>${cumW.toFixed(3)}</td>`;
+                tbody.appendChild(tr);
+            });
+
+            // Update chart with kernel window
+            const kernelX = [], kernelY = [];
+            for (let xx = t0 - h; xx <= t0 + h; xx += 0.01) {
+                kernelX.push(xx);
+                kernelY.push(-1.5 + epanechnikov((xx - t0) / h) * 0.5);
+            }
+            const sizes = inWindow.map((p, i) => 5 + weights[i] * 15);
+            const trace1 = { x: xData, y: yData, mode: 'markers', type: 'scatter', name: 'Data', marker: { size: 6, color: '#ccc' } };
+            const trace2 = { x: inWindow.map(p => p.x), y: inWindow.map(p => p.y), mode: 'markers', type: 'scatter', name: 'In Window', marker: { size: sizes, color: '#667eea' } };
+            const trace3 = { x: [t0], y: [wMedian], mode: 'markers', type: 'scatter', name: 'Weighted Median', marker: { size: 14, color: '#2ca02c', symbol: 'diamond' } };
+            const trace4 = { x: kernelX, y: kernelY, mode: 'lines', type: 'scatter', name: 'Kernel', fill: 'tozeroy', fillcolor: 'rgba(102,126,234,0.2)', line: { color: '#667eea' } };
+            const layout = { margin: { t: 20, r: 20, b: 40, l: 50 }, xaxis: { title: 'x' }, yaxis: { title: 'y', range: [-2, 2] }, legend: { x: 0, y: 1 }, showlegend: true };
+            Plotly.react('point-chart', [trace1, trace4, trace2, trace3], layout);
+            document.getElementById('point-chart').on('plotly_click', onPointClick);
+        }
+
+        // ============================================
+        // Bandwidth Demo
+        // ============================================
+
+        function initBandwidthDemo() {
+            updateBandwidthChart();
+            document.getElementById('bw-slider').oninput = function() {
+                document.getElementById('bw-value').textContent = parseFloat(this.value).toFixed(2);
+                updateBandwidthChart();
+            };
+        }
+
+        function updateBandwidthChart() {
+            const h = parseFloat(document.getElementById('bw-slider').value);
+            const smoothed = localMedian(xData, yData, h);
+            const trace1 = { x: xData, y: yData, mode: 'markers', type: 'scatter', name: 'Noisy', marker: { size: 5, color: '#999' } };
+            const trace2 = { x: xData, y: smoothed, mode: 'lines', type: 'scatter', name: 'Local Median', line: { color: '#667eea', width: 2 } };
+            const trace3 = { x: xData, y: trueSignal, mode: 'lines', type: 'scatter', name: 'True', line: { color: '#2ca02c', dash: 'dash', width: 2 } };
+            const layout = { margin: { t: 20, r: 20, b: 40, l: 50 }, xaxis: { title: 'x' }, yaxis: { title: 'y' }, legend: { x: 0, y: 1 } };
+            Plotly.react('bandwidth-chart', [trace1, trace2, trace3], layout);
+            document.getElementById('bw-mse').textContent = mse(smoothed, trueSignal).toFixed(4);
+        }
+
+        function animateBandwidth() {
+            const slider = document.getElementById('bw-slider');
+            let h = 1.5;
+            const interval = setInterval(() => {
+                h -= 0.05;
+                if (h < 0.1) { clearInterval(interval); return; }
+                slider.value = h;
+                document.getElementById('bw-value').textContent = h.toFixed(2);
+                updateBandwidthChart();
+            }, 100);
+        }
+
+        // ============================================
+        // Comparison Demo
+        // ============================================
+
+        function initComparisonDemo() {
+            updateComparisonChart();
+        }
+
+        function setOutliers(frac) {
+            currentOutlierFrac = frac;
+            document.querySelectorAll('.outlier-btns .outlier-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            generateNoisyData(frac);
+            updateComparisonChart();
+        }
+
+        function updateComparisonChart() {
+            const h = 0.5;
+            const smoothedMedian = localMedian(xData, yData, h);
+            const smoothedMean = localMean(xData, yData, h);
+            const trace1 = { x: xData, y: yData, mode: 'markers', type: 'scatter', name: 'Noisy', marker: { size: 5, color: '#999' } };
+            const trace2 = { x: xData, y: smoothedMedian, mode: 'lines', type: 'scatter', name: 'Local Median', line: { color: '#2ca02c', width: 2 } };
+            const trace3 = { x: xData, y: smoothedMean, mode: 'lines', type: 'scatter', name: 'Local Mean', line: { color: '#d62728', width: 2 } };
+            const trace4 = { x: xData, y: trueSignal, mode: 'lines', type: 'scatter', name: 'True', line: { color: '#1f77b4', dash: 'dash', width: 2 } };
+            const layout = { margin: { t: 20, r: 20, b: 40, l: 50 }, xaxis: { title: 'x' }, yaxis: { title: 'y' }, legend: { x: 0, y: 1 } };
+            Plotly.react('comparison-chart', [trace1, trace2, trace3, trace4], layout);
+            document.getElementById('cmp-mse-median').textContent = mse(smoothedMedian, trueSignal).toFixed(4);
+            document.getElementById('cmp-mse-mean').textContent = mse(smoothedMean, trueSignal).toFixed(4);
+        }
+
+        // Initialize first tab on load
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(initPointDemo, 100);
+        });
     </script>
 </body>
 </html>
