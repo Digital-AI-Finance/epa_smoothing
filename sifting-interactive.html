@@ -194,13 +194,22 @@
 
     <div class="container">
         <div class="section">
-            <h2>Controls</h2>
+            <h2>Bandwidth Parameters</h2>
+            <div class="control-item" style="margin-bottom: 0.5rem;">
+                <label>Initial Bandwidth h<sub>1</sub></label>
+                <input type="range" id="h1-slider" min="0.01" max="0.5" step="0.01" value="0.1">
+                <span id="h1-value" class="value-display">0.10</span>
+            </div>
+            <div class="control-item">
+                <label>Decay Factor r (h<sub>k+1</sub> = h<sub>k</sub> / r)</label>
+                <input type="range" id="decay-slider" min="1.05" max="3.0" step="0.05" value="1.414">
+                <span id="decay-value" class="value-display">1.41</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Other Controls</h2>
             <div class="controls-grid">
-                <div class="control-item">
-                    <label>Initial Bandwidth h<sub>1</sub></label>
-                    <input type="range" id="h1-slider" min="0.01" max="0.5" step="0.01" value="0.1">
-                    <span id="h1-value" class="value-display">0.10</span>
-                </div>
                 <div class="control-item">
                     <label>Iterations</label>
                     <input type="range" id="iter-slider" min="1" max="100" step="1" value="100">
@@ -210,11 +219,6 @@
                     <label>Noise Level</label>
                     <input type="range" id="noise-slider" min="0" max="0.5" step="0.05" value="0.2">
                     <span id="noise-value" class="value-display">0.20</span>
-                </div>
-                <div class="control-item">
-                    <label>Decay Factor r</label>
-                    <input type="range" id="decay-slider" min="1.05" max="3.0" step="0.05" value="1.414">
-                    <span id="decay-value" class="value-display">1.41</span>
                 </div>
             </div>
             <div class="btn-row">
@@ -522,6 +526,7 @@
         // Slider event listeners
         document.getElementById('h1-slider').oninput = function() {
             document.getElementById('h1-value').textContent = parseFloat(this.value).toFixed(2);
+            runSifting();
         };
         document.getElementById('iter-slider').oninput = function() {
             document.getElementById('iter-value').textContent = this.value;
@@ -541,6 +546,7 @@
             const val = parseFloat(this.value);
             document.getElementById('decay-value').textContent = val.toFixed(2);
             document.getElementById('formula-r').textContent = val.toFixed(2);
+            runSifting();
         };
         document.getElementById('k-slider').oninput = function() {
             const k = parseInt(this.value);
