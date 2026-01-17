@@ -10,14 +10,19 @@
     <style>
         .chart-container {
             background: white;
-            border-radius: 8px;
-            padding: 1rem;
-            margin: 1.5rem 0;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            border-radius: 6px;
+            padding: 0.5rem;
+            margin: 0.5rem 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         .chart-container h4 {
             color: #667eea;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.25rem;
+            font-size: 0.9rem;
+        }
+        .chart-container p {
+            font-size: 0.8rem;
+            margin-bottom: 0.25rem;
         }
         .chart-container object,
         .chart-container img {
@@ -28,7 +33,7 @@
             margin: 0 auto;
         }
         .bandwidth-table {
-            margin: 1.5rem 0;
+            margin: 0.5rem 0;
         }
         .bandwidth-table td:first-child {
             font-weight: bold;
@@ -36,37 +41,45 @@
         }
         .external-links {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            margin: 1.5rem 0;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 0.4rem;
+            margin: 0.5rem 0;
         }
         .external-link {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 1rem;
-            border-radius: 8px;
+            padding: 0.5rem;
+            border-radius: 6px;
             text-decoration: none;
             text-align: center;
-            transition: transform 0.3s;
+            transition: transform 0.2s;
+            font-size: 0.85rem;
         }
         .external-link:hover {
-            transform: translateY(-3px);
+            transform: translateY(-2px);
+        }
+        .external-link small {
+            font-size: 0.7rem;
         }
         .method-comparison {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 1.5rem;
-            margin: 1.5rem 0;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.5rem;
+            margin: 0.5rem 0;
         }
         .method-card {
             background: #f8f9fa;
-            border-radius: 8px;
-            padding: 1.5rem;
-            border-left: 4px solid #667eea;
+            border-radius: 6px;
+            padding: 0.5rem;
+            border-left: 3px solid #667eea;
         }
         .method-card h4 {
             color: #667eea;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.25rem;
+            font-size: 0.9rem;
+        }
+        .method-card p {
+            font-size: 0.8rem;
         }
         .method-card.highlight {
             border-left-color: #2ca02c;
