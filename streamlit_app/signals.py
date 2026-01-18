@@ -20,7 +20,7 @@ from typing import Tuple
 
 
 def generate_amfm_signal(
-    n_points: int = 500,
+    n_points: int = 2000,
     t_start: float = 0.0,
     t_end: float = 1.0,
     am_depth: float = 0.5,
@@ -94,7 +94,7 @@ def generate_amfm_signal(
 
 
 def generate_amfm_components(
-    n_points: int = 500,
+    n_points: int = 2000,
     t_start: float = 0.0,
     t_end: float = 1.0,
     am_depth: float = 0.5,
@@ -151,7 +151,7 @@ def get_default_signal_params() -> dict:
     that clearly demonstrates the EMD decomposition.
     """
     return {
-        'n_points': 500,
+        'n_points': 2000,
         't_start': 0.0,
         't_end': 1.0,
         'am_depth': 0.5,

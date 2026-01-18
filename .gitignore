@@ -1,0 +1,10 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Large precomputed data (regenerate with: python precompute.py)
+streamlit_app/precomputed_data.pkl
+
+# IDE
+.idea/
+.vscode/

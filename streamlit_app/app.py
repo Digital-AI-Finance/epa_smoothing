@@ -301,6 +301,174 @@ def create_reconstruction_plots(
     return fig_noisy, fig_clean, cumsum_noisy, cumsum_clean
 
 
+def create_methods_comparison_plot(
+    t: np.ndarray,
+    all_results: Dict[str, Dict[str, Any]],
+    y_clean: np.ndarray,
+    k: int
+) -> go.Figure:
+    """Create overlay plot comparing all 3 methods' smooth components."""
+
+    fig = go.Figure()
+
+    # Add ground truth
+    fig.add_trace(go.Scatter(
+        x=t, y=y_clean,
+        name='Ground Truth',
+        line=dict(color='black', width=2, dash='dash'),
+        opacity=0.7
+    ))
+
+    # Method colors and names
+    method_config = {
+        'local_median': {'color': '#ff7f0e', 'name': 'Local Median (EPA)'},
+        'median': {'color': '#2ca02c', 'name': 'Median (Unweighted)'},
+        'average': {'color': '#1f77b4', 'name': 'Average (NW Mean)'}
+    }
+
+    k_idx = k - 1
+
+    for method, config in method_config.items():
+        if method in all_results:
+            data = all_results[method]
+            if k_idx < len(data['X_tilde_list']):
+                fig.add_trace(go.Scatter(
+                    x=t, y=data['X_tilde_list'][k_idx],
+                    name=config['name'],
+                    line=dict(color=config['color'], width=2)
+                ))
+
+    fig.update_layout(
+        title=dict(text=f"Methods Comparison - Smooth Component (k={k})", x=0.5),
+        height=350,
+        xaxis_title='t',
+        yaxis_title='Amplitude',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),
+        margin=dict(l=50, r=30, t=80, b=40)
+    )
+
+    return fig
+
+
+def create_residual_analysis_plot(
+    all_results: Dict[str, Dict[str, Any]],
+    k: int
+) -> go.Figure:
+    """Create histogram of residuals for each method."""
+
+    from plotly.subplots import make_subplots
+
+    methods = ['local_median', 'median', 'average']
+    method_names = ['Local Median', 'Median', 'Average']
+    colors = ['#ff7f0e', '#2ca02c', '#1f77b4']
+
+    fig = make_subplots(
+        rows=1, cols=3,
+        subplot_titles=method_names,
+        horizontal_spacing=0.08
+    )
+
+    k_idx = k - 1
+
+    for i, (method, name, color) in enumerate(zip(methods, method_names, colors)):
+        if method in all_results:
+            data = all_results[method]
+            if k_idx < len(data['X_list']) - 1:
+                residuals = data['X_list'][k_idx + 1]
+
+                fig.add_trace(
+                    go.Histogram(
+                        x=residuals,
+                        nbinsx=50,
+                        marker_color=color,
+                        opacity=0.7,
+                        showlegend=False
+                    ),
+                    row=1, col=i+1
+                )
+
+                # Add statistics annotation
+                mean_r = np.mean(residuals)
+                std_r = np.std(residuals)
+                fig.add_annotation(
+                    x=0.5, y=0.95,
+                    xref=f'x{i+1} domain', yref=f'y{i+1} domain',
+                    text=f'mean={mean_r:.3f}<br>std={std_r:.3f}',
+                    showarrow=False,
+                    font=dict(size=10),
+                    bgcolor='rgba(255,255,255,0.8)'
+                )
+
+    fig.update_layout(
+        title=dict(text=f"Residual Distribution (k={k})", x=0.5),
+        height=300,
+        margin=dict(l=50, r=30, t=80, b=40)
+    )
+
+    for i in range(1, 4):
+        fig.update_xaxes(title_text='Residual Value', row=1, col=i)
+        fig.update_yaxes(title_text='Count' if i == 1 else '', row=1, col=i)
+
+    return fig
+
+
+def create_bandwidth_decay_plot(
+    h0: float,
+    decay: float,
+    current_k: int
+) -> go.Figure:
+    """Create visualization of bandwidth decay h_k = h0 / decay^(k-1)."""
+
+    k_values = np.arange(1, 11)
+    h_values = h0 / (decay ** (k_values - 1))
+
+    fig = go.Figure()
+
+    # Line plot
+    fig.add_trace(go.Scatter(
+        x=k_values,
+        y=h_values,
+        mode='lines+markers',
+        name='h_k',
+        line=dict(color='#1f77b4', width=2),
+        marker=dict(size=8, color='#1f77b4')
+    ))
+
+    # Highlight current k
+    current_h = h0 / (decay ** (current_k - 1))
+    fig.add_trace(go.Scatter(
+        x=[current_k],
+        y=[current_h],
+        mode='markers',
+        name=f'Current (k={current_k})',
+        marker=dict(size=15, color='#ff7f0e', symbol='star', line=dict(width=2, color='black'))
+    ))
+
+    # Add formula annotation
+    fig.add_annotation(
+        x=0.95, y=0.95,
+        xref='paper', yref='paper',
+        text=f'h_k = {h0:.2f} / {decay:.3f}^(k-1)',
+        showarrow=False,
+        font=dict(size=12),
+        bgcolor='rgba(255,255,255,0.9)',
+        bordercolor='gray',
+        borderwidth=1
+    )
+
+    fig.update_layout(
+        title=dict(text="Bandwidth Decay", x=0.5),
+        height=300,
+        xaxis_title='Iteration k',
+        yaxis_title='Bandwidth h_k',
+        xaxis=dict(tickmode='linear', tick0=1, dtick=1),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),
+        margin=dict(l=50, r=30, t=80, b=40)
+    )
+
+    return fig
+
+
 def render_theory_tab():
     """Render the Theory & Math tab with full theoretical exposition."""
 
@@ -658,7 +826,7 @@ def main():
 
     # Generate signal
     t, y_clean, y_noisy = generate_amfm_signal(
-        n_points=500,
+        n_points=2000,
         am_depth=am_depth,
         base_freq=float(base_freq),
         chirp_rate=float(chirp_rate),
@@ -769,6 +937,25 @@ def main():
     col1, col2, col3 = st.columns([1, 4, 1])
     with col2:
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+    # Additional Analysis Section
+    st.markdown("---")
+    st.subheader("Additional Analysis")
+
+    # Methods Comparison Plot (full width)
+    fig_comparison = create_methods_comparison_plot(t, all_results, y_clean, k)
+    st.plotly_chart(fig_comparison, use_container_width=True)
+
+    # Residual Analysis and Bandwidth Decay (side by side)
+    col1, col2 = st.columns(2)
+
+    with col1:
+        fig_residuals = create_residual_analysis_plot(all_results, k)
+        st.plotly_chart(fig_residuals, use_container_width=True)
+
+    with col2:
+        fig_bandwidth = create_bandwidth_decay_plot(h0, decay, k)
+        st.plotly_chart(fig_bandwidth, use_container_width=True)
 
     # Additional info
     st.markdown("---")
