@@ -26,15 +26,19 @@ def epanechnikov_kernel(u: np.ndarray) -> np.ndarray:
 
 def weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
     """
-    Compute weighted median using cumulative weight method.
+    Compute weighted median with linear interpolation for smooth output.
 
     The weighted median minimizes: argmin_m SUM |y_i - m| * w_i
+
+    Instead of returning a discrete sample value, this interpolates between
+    adjacent values at the 0.5 cumulative weight crossing. This eliminates
+    step-like artifacts when smoothing clean/noiseless data.
 
     Algorithm:
     1. Sort values and corresponding weights
     2. Compute cumulative normalized weights
-    3. Find first index where cumulative weight >= 0.5
-    4. Handle edge case at exactly 0.5 with interpolation
+    3. Find crossing point at cumulative weight = 0.5
+    4. Linearly interpolate between adjacent values at crossing
     """
     if len(values) == 0:
         return np.nan
@@ -56,13 +60,20 @@ def weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
 
     if idx >= len(sorted_values):
         return sorted_values[-1]
-    elif idx == 0:
+    if idx == 0:
         return sorted_values[0]
-    elif np.isclose(cumulative_weights[idx - 1], 0.5):
-        # Exact 0.5 - interpolate between adjacent values
-        return 0.5 * (sorted_values[idx - 1] + sorted_values[idx])
+
+    # Linear interpolation between y[idx-1] and y[idx]
+    c_prev = cumulative_weights[idx - 1]
+    c_curr = cumulative_weights[idx]
+
+    if c_curr > c_prev:
+        alpha = (0.5 - c_prev) / (c_curr - c_prev)
     else:
-        return sorted_values[idx]
+        alpha = 0.5
+
+    alpha = np.clip(alpha, 0.0, 1.0)
+    return sorted_values[idx - 1] + alpha * (sorted_values[idx] - sorted_values[idx - 1])
 
 
 def unweighted_median_window(values: np.ndarray, in_window: np.ndarray) -> float:

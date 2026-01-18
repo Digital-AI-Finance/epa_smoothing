@@ -105,7 +105,12 @@ def generate_signal(x, signal_type='sincos'):
 # =============================================================================
 
 def weighted_median(values, weights):
-    """Compute weighted median with proper edge case handling."""
+    """Compute weighted median with linear interpolation for smooth output.
+
+    Instead of returning a discrete sample value, interpolates between
+    adjacent values at the 0.5 cumulative weight crossing. This eliminates
+    step-like artifacts when smoothing clean/noiseless data.
+    """
     if len(values) == 0 or np.sum(weights) == 0:
         return np.nan
 
@@ -118,18 +123,25 @@ def weighted_median(values, weights):
     total_weight = np.sum(sorted_weights)
     cumulative_weights = np.cumsum(sorted_weights) / total_weight
 
-    # Find median with linear interpolation for edge case
+    # Find median position
     idx = np.searchsorted(cumulative_weights, 0.5)
 
     if idx >= len(sorted_values):
         return sorted_values[-1]
-    elif idx == 0:
+    if idx == 0:
         return sorted_values[0]
-    elif np.isclose(cumulative_weights[idx-1], 0.5):
-        # Exact 0.5 - interpolate
-        return 0.5 * (sorted_values[idx-1] + sorted_values[idx])
+
+    # Linear interpolation between y[idx-1] and y[idx]
+    c_prev = cumulative_weights[idx - 1]
+    c_curr = cumulative_weights[idx]
+
+    if c_curr > c_prev:
+        alpha = (0.5 - c_prev) / (c_curr - c_prev)
     else:
-        return sorted_values[idx]
+        alpha = 0.5
+
+    alpha = np.clip(alpha, 0.0, 1.0)
+    return sorted_values[idx - 1] + alpha * (sorted_values[idx] - sorted_values[idx - 1])
 
 
 def epa_local_median(x, y, bandwidth, kernel_name='epanechnikov'):

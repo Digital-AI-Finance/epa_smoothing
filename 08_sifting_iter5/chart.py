@@ -31,6 +31,7 @@ def epanechnikov_kernel(u):
 
 
 def weighted_median(values, weights):
+    """Compute weighted median with linear interpolation for smooth output."""
     if len(values) == 0 or np.sum(weights) == 0:
         return np.nan
     sorted_indices = np.argsort(values)
@@ -40,11 +41,16 @@ def weighted_median(values, weights):
     idx = np.searchsorted(cumulative_weights, 0.5)
     if idx >= len(sorted_values):
         return sorted_values[-1]
-    elif idx == 0:
+    if idx == 0:
         return sorted_values[0]
-    elif np.isclose(cumulative_weights[idx-1], 0.5):
-        return 0.5 * (sorted_values[idx-1] + sorted_values[idx])
-    return sorted_values[idx]
+    c_prev = cumulative_weights[idx - 1]
+    c_curr = cumulative_weights[idx]
+    if c_curr > c_prev:
+        alpha = (0.5 - c_prev) / (c_curr - c_prev)
+    else:
+        alpha = 0.5
+    alpha = np.clip(alpha, 0.0, 1.0)
+    return sorted_values[idx - 1] + alpha * (sorted_values[idx] - sorted_values[idx - 1])
 
 
 def epa_local_median(x, y, bandwidth):
@@ -62,7 +68,7 @@ def epa_local_median(x, y, bandwidth):
 # =============================================================================
 
 np.random.seed(42)
-n = 500
+n = 2000
 x = np.linspace(0, 1, n)
 
 # AM-FM signal
