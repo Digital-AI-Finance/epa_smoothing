@@ -1597,6 +1597,417 @@ def render_theory_tab():
         """)
 
 
+def render_epa_vs_ionase_tab(t: np.ndarray, y_noisy: np.ndarray, y_clean: np.ndarray,
+                              h0: float, decay: float, k: int):
+    """Render visual comparison of EPA vs ionASE smooth curves."""
+
+    st.header("EPA vs ionASE: Smooth Curve Comparison")
+
+    # Compute current bandwidth
+    h_k = h0 / (decay ** (k - 1))
+    n = len(t)
+
+    # Display current parameters
+    st.markdown(f"""
+    **Current Parameters:** h0 = {h0:.3f}, decay = {decay:.3f}, k = {k}
+    &rarr; **h_k = {h_k:.4f}**
+    """)
+
+    # Compute smooths
+    epa_smooth = epa_local_median(t, y_noisy, h_k)
+    ionase_smooth, ionase_valid = ionase_local_median_fit(y_noisy, h_k)
+
+    # ionASE boundary indices
+    t_min_ionase = int(np.ceil(h_k * n))
+    t_max_ionase = int(np.floor((1 - h_k) * n))
+
+    # Check edge case: no valid region
+    valid_count = np.sum(ionase_valid)
+    if valid_count == 0:
+        st.error(f"""
+        **No valid region for ionASE!**
+
+        With h_k = {h_k:.4f}, the valid range would be [{t_min_ionase}, {t_max_ionase}],
+        which is empty. Try reducing h0 or increasing k.
+        """)
+        return
+
+    # ========== SECTION 1: Hero Overlay Plot ==========
+    st.markdown("### Full Signal Overlay")
+
+    fig_hero = go.Figure()
+
+    # Noisy signal (background)
+    fig_hero.add_trace(go.Scatter(
+        x=t, y=y_noisy,
+        mode='lines',
+        name='Noisy Signal',
+        line=dict(color='gray', width=1),
+        opacity=0.3
+    ))
+
+    # Ground truth
+    fig_hero.add_trace(go.Scatter(
+        x=t, y=y_clean,
+        mode='lines',
+        name='Ground Truth',
+        line=dict(color='green', width=2, dash='dash')
+    ))
+
+    # EPA smooth (full coverage)
+    fig_hero.add_trace(go.Scatter(
+        x=t, y=epa_smooth,
+        mode='lines',
+        name='EPA Smooth',
+        line=dict(color='#1f77b4', width=2.5)
+    ))
+
+    # ionASE smooth (valid region only)
+    fig_hero.add_trace(go.Scatter(
+        x=t[ionase_valid], y=ionase_smooth[ionase_valid],
+        mode='lines',
+        name='ionASE Smooth',
+        line=dict(color='#ff7f0e', width=2.5)
+    ))
+
+    # Add vertical shading for ionASE NaN regions
+    if t_min_ionase > 0:
+        fig_hero.add_vrect(
+            x0=t[0], x1=t[t_min_ionase],
+            fillcolor='rgba(255,127,14,0.08)',
+            line_width=0,
+            annotation_text="ionASE NaN",
+            annotation_position="top left",
+            annotation_font_size=10
+        )
+
+    if t_max_ionase < n - 1:
+        fig_hero.add_vrect(
+            x0=t[t_max_ionase], x1=t[-1],
+            fillcolor='rgba(255,127,14,0.08)',
+            line_width=0,
+            annotation_text="ionASE NaN",
+            annotation_position="top right",
+            annotation_font_size=10
+        )
+
+    fig_hero.update_layout(
+        height=450,
+        title=f"EPA vs ionASE Smooth Comparison (h_k = {h_k:.4f})",
+        xaxis_title="t",
+        yaxis_title="Value",
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),
+        hovermode='x unified'
+    )
+
+    st.plotly_chart(fig_hero, use_container_width=True)
+
+    # ========== SECTION 2: Side-by-Side Detail Plots ==========
+    st.markdown("### Side-by-Side Detail")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        fig_epa = go.Figure()
+        fig_epa.add_trace(go.Scatter(
+            x=t, y=y_clean,
+            mode='lines',
+            name='Ground Truth',
+            line=dict(color='green', width=1.5, dash='dash')
+        ))
+        fig_epa.add_trace(go.Scatter(
+            x=t, y=epa_smooth,
+            mode='lines',
+            name='EPA Smooth',
+            line=dict(color='#1f77b4', width=2)
+        ))
+        fig_epa.update_layout(
+            height=300,
+            title="EPA: Full Coverage",
+            xaxis_title="t",
+            yaxis_title="Value",
+            showlegend=True
+        )
+        st.plotly_chart(fig_epa, use_container_width=True)
+
+    with col2:
+        fig_ionase = go.Figure()
+        # Ground truth trimmed to valid region
+        fig_ionase.add_trace(go.Scatter(
+            x=t[ionase_valid], y=y_clean[ionase_valid],
+            mode='lines',
+            name='Ground Truth',
+            line=dict(color='green', width=1.5, dash='dash')
+        ))
+        fig_ionase.add_trace(go.Scatter(
+            x=t[ionase_valid], y=ionase_smooth[ionase_valid],
+            mode='lines',
+            name='ionASE Smooth',
+            line=dict(color='#ff7f0e', width=2)
+        ))
+        fig_ionase.update_layout(
+            height=300,
+            title=f"ionASE: Valid Region [{t_min_ionase}, {t_max_ionase}]",
+            xaxis_title="t",
+            yaxis_title="Value",
+            showlegend=True
+        )
+        st.plotly_chart(fig_ionase, use_container_width=True)
+
+    # ========== SECTION 3: Difference Plot ==========
+    st.markdown("### EPA - ionASE Difference (Valid Region)")
+
+    # Compute difference on valid region
+    diff = epa_smooth[ionase_valid] - ionase_smooth[ionase_valid]
+
+    fig_diff = go.Figure()
+    fig_diff.add_trace(go.Scatter(
+        x=t[ionase_valid], y=diff,
+        mode='lines',
+        name='EPA - ionASE',
+        line=dict(color='#9467bd', width=2)
+    ))
+    fig_diff.add_hline(y=0, line_dash='dash', line_color='gray', line_width=1)
+
+    fig_diff.update_layout(
+        height=250,
+        title="Difference Between Methods",
+        xaxis_title="t",
+        yaxis_title="EPA - ionASE",
+        showlegend=False
+    )
+    st.plotly_chart(fig_diff, use_container_width=True)
+
+    # ========== SECTION 4: Metrics Panel ==========
+    st.markdown("### Metrics Comparison")
+
+    # Compute metrics
+    rmse_epa_full = np.sqrt(np.mean((epa_smooth - y_clean) ** 2))
+    mae_epa_full = np.mean(np.abs(epa_smooth - y_clean))
+
+    rmse_ionase_valid = np.sqrt(np.mean((ionase_smooth[ionase_valid] - y_clean[ionase_valid]) ** 2))
+    mae_ionase_valid = np.mean(np.abs(ionase_smooth[ionase_valid] - y_clean[ionase_valid]))
+
+    # EPA on valid region for fair comparison
+    rmse_epa_valid = np.sqrt(np.mean((epa_smooth[ionase_valid] - y_clean[ionase_valid]) ** 2))
+    mae_epa_valid = np.mean(np.abs(epa_smooth[ionase_valid] - y_clean[ionase_valid]))
+
+    # Difference statistics
+    diff_mean = np.mean(diff)
+    diff_std = np.std(diff)
+    diff_max = np.max(np.abs(diff))
+    diff_95 = np.percentile(np.abs(diff), 95)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("**EPA (Full Signal)**")
+        st.metric("RMSE", f"{rmse_epa_full:.4f}")
+        st.metric("MAE", f"{mae_epa_full:.4f}")
+
+    with col2:
+        st.markdown("**ionASE (Valid Region)**")
+        st.metric("RMSE", f"{rmse_ionase_valid:.4f}")
+        st.metric("MAE", f"{mae_ionase_valid:.4f}")
+
+    with col3:
+        st.markdown("**EPA (Valid Region)**")
+        st.metric("RMSE", f"{rmse_epa_valid:.4f}")
+        st.metric("MAE", f"{mae_epa_valid:.4f}")
+        st.caption("Fair comparison on same region")
+
+    st.markdown("---")
+    st.markdown("**Difference Statistics (EPA - ionASE on valid region):**")
+
+    dcol1, dcol2, dcol3, dcol4 = st.columns(4)
+    with dcol1:
+        st.metric("Mean", f"{diff_mean:.6f}")
+    with dcol2:
+        st.metric("Std Dev", f"{diff_std:.6f}")
+    with dcol3:
+        st.metric("Max |diff|", f"{diff_max:.6f}")
+    with dcol4:
+        st.metric("95th pctl", f"{diff_95:.6f}")
+
+    # ========== SECTION 5: Direct Smooth Overlay with Explanation ==========
+    st.markdown("---")
+    st.markdown("### Direct Smooth Overlay (Valid Region)")
+
+    # Create overlay plot - EPA and ionASE only, no noise
+    fig_overlay = go.Figure()
+
+    fig_overlay.add_trace(go.Scatter(
+        x=t[ionase_valid], y=epa_smooth[ionase_valid],
+        mode='lines',
+        name='EPA Smooth',
+        line=dict(color='#1f77b4', width=2.5)
+    ))
+
+    fig_overlay.add_trace(go.Scatter(
+        x=t[ionase_valid], y=ionase_smooth[ionase_valid],
+        mode='lines',
+        name='ionASE Smooth',
+        line=dict(color='#ff7f0e', width=2.5)
+    ))
+
+    fig_overlay.update_layout(
+        height=400,
+        title="EPA vs ionASE: Smooth Curves Only (Valid Region)",
+        xaxis_title="t",
+        yaxis_title="Smoothed Value",
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),
+        hovermode='x unified'
+    )
+
+    st.plotly_chart(fig_overlay, use_container_width=True)
+
+    # Explanation of WHY differences exist inside valid region
+    st.markdown("### Why Differences Exist Inside the Valid Region")
+
+    st.markdown("""
+Even within the valid region where both methods compute values, **small but systematic differences** arise from:
+""")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("#### 1. Kernel Distance Calculation")
+        st.markdown("""
+**EPA**: Time-based distance
+```
+u = (t[j] - t[i]) / h
+```
+Uses actual time values from the signal's domain.
+
+**ionASE**: Index-based distance
+```
+u = (j - i) / (h * n)
+```
+Uses array indices normalized by signal length.
+
+For uniformly-spaced data, these are mathematically similar but use different scaling conventions.
+""")
+
+    with col2:
+        st.markdown("#### 2. Weighted Median Computation")
+        st.markdown("""
+**EPA**: Linear interpolation at 0.5 crossing
+- Finds where cumulative weight crosses 0.5
+- Interpolates between adjacent sorted values
+- Produces **smooth, continuous output**
+
+**ionASE**: Exact index (no interpolation)
+- Returns the value at the index where cumsum first exceeds 0.5
+- Output can only be actual data values
+- Can cause **micro-jumps** between adjacent points
+""")
+
+    st.info("""
+**Key Insight**: The interpolation difference is the primary cause of visible discrepancies.
+ionASE output is restricted to actual sample values, while EPA can produce values between samples.
+This is most noticeable when the signal changes rapidly or when bandwidth is small.
+""")
+
+    # ========== SECTION 6: Boundary Zoom Expander ==========
+    with st.expander("Boundary Zoom (Left & Right Edges)", expanded=False):
+        st.markdown("""
+        The main difference between EPA and ionASE is **boundary handling**.
+        ionASE returns NaN outside the valid range, while EPA computes values for all points.
+        """)
+
+        # Left boundary (first 15%)
+        left_end = int(0.15 * n)
+        # Right boundary (last 15%)
+        right_start = int(0.85 * n)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**Left Boundary (first 15%)**")
+            fig_left = go.Figure()
+
+            fig_left.add_trace(go.Scatter(
+                x=t[:left_end], y=y_clean[:left_end],
+                mode='lines', name='Ground Truth',
+                line=dict(color='green', width=1.5, dash='dash')
+            ))
+            fig_left.add_trace(go.Scatter(
+                x=t[:left_end], y=epa_smooth[:left_end],
+                mode='lines', name='EPA',
+                line=dict(color='#1f77b4', width=2)
+            ))
+
+            # ionASE (only valid portion)
+            left_valid = ionase_valid[:left_end]
+            if np.any(left_valid):
+                t_left_valid = t[:left_end][left_valid]
+                ionase_left_valid = ionase_smooth[:left_end][left_valid]
+                fig_left.add_trace(go.Scatter(
+                    x=t_left_valid, y=ionase_left_valid,
+                    mode='lines', name='ionASE',
+                    line=dict(color='#ff7f0e', width=2)
+                ))
+
+            # Mark ionASE start
+            if t_min_ionase < left_end:
+                fig_left.add_vline(
+                    x=t[t_min_ionase],
+                    line_dash='dot',
+                    line_color='#ff7f0e',
+                    annotation_text=f"ionASE starts",
+                    annotation_position="top"
+                )
+
+            fig_left.update_layout(height=280, showlegend=True)
+            st.plotly_chart(fig_left, use_container_width=True)
+
+        with col2:
+            st.markdown("**Right Boundary (last 15%)**")
+            fig_right = go.Figure()
+
+            fig_right.add_trace(go.Scatter(
+                x=t[right_start:], y=y_clean[right_start:],
+                mode='lines', name='Ground Truth',
+                line=dict(color='green', width=1.5, dash='dash')
+            ))
+            fig_right.add_trace(go.Scatter(
+                x=t[right_start:], y=epa_smooth[right_start:],
+                mode='lines', name='EPA',
+                line=dict(color='#1f77b4', width=2)
+            ))
+
+            # ionASE (only valid portion)
+            right_valid = ionase_valid[right_start:]
+            if np.any(right_valid):
+                t_right_valid = t[right_start:][right_valid]
+                ionase_right_valid = ionase_smooth[right_start:][right_valid]
+                fig_right.add_trace(go.Scatter(
+                    x=t_right_valid, y=ionase_right_valid,
+                    mode='lines', name='ionASE',
+                    line=dict(color='#ff7f0e', width=2)
+                ))
+
+            # Mark ionASE end
+            if t_max_ionase > right_start:
+                fig_right.add_vline(
+                    x=t[t_max_ionase],
+                    line_dash='dot',
+                    line_color='#ff7f0e',
+                    annotation_text=f"ionASE ends",
+                    annotation_position="top"
+                )
+
+            fig_right.update_layout(height=280, showlegend=True)
+            st.plotly_chart(fig_right, use_container_width=True)
+
+        st.info(f"""
+        **Coverage Summary:**
+        - EPA: {n} points (100%)
+        - ionASE: {valid_count} points ({100*valid_count/n:.1f}%)
+        - ionASE valid range: indices [{t_min_ionase}, {t_max_ionase}]
+        """)
+
+
 def render_implementations_tab(t: np.ndarray, y_noisy: np.ndarray, y_clean: np.ndarray,
                                 h0: float, decay: float, k: int):
     """Render the Implementations comparison tab comparing EPA vs ionASE algorithms."""
@@ -1894,7 +2305,7 @@ def render_implementations_tab(t: np.ndarray, y_noisy: np.ndarray, y_clean: np.n
             line=dict(color='gray', width=1), opacity=0.5, showlegend=False
         ), row=2, col=1)
         fig_boundary.add_trace(go.Scatter(
-            x=t, y=ionase_smooth, mode='lines', name='ionASE Smooth',
+            x=t[ionase_valid], y=ionase_smooth[ionase_valid], mode='lines', name='ionASE Smooth',
             line=dict(color='orange', width=2)
         ), row=2, col=1)
         fig_boundary.add_trace(go.Scatter(
@@ -1973,9 +2384,9 @@ def render_implementations_tab(t: np.ndarray, y_noisy: np.ndarray, y_clean: np.n
             line=dict(color='steelblue', width=2)
         ), row=1, col=1)
 
-        # ionASE smooth
+        # ionASE smooth (filter to valid region only)
         fig_compare.add_trace(go.Scatter(
-            x=t, y=ionase_smooth, mode='lines', name='ionASE',
+            x=t[ionase_valid], y=ionase_smooth[ionase_valid], mode='lines', name='ionASE',
             line=dict(color='orange', width=2)
         ), row=1, col=2)
 
@@ -2157,8 +2568,11 @@ def render_implementations_tab(t: np.ndarray, y_noisy: np.ndarray, y_clean: np.n
             x=t_zoom, y=epa_smooth[start_idx:end_idx], mode='lines', name='EPA',
             line=dict(color='steelblue', width=2)
         ), row=1, col=1)
+        # Filter ionASE zoom to valid region only
+        ionase_zoom = ionase_smooth[start_idx:end_idx]
+        ionase_valid_zoom = ionase_valid[start_idx:end_idx]
         fig_jumps.add_trace(go.Scatter(
-            x=t_zoom, y=ionase_smooth[start_idx:end_idx], mode='lines', name='ionASE',
+            x=t_zoom[ionase_valid_zoom], y=ionase_zoom[ionase_valid_zoom], mode='lines', name='ionASE',
             line=dict(color='orange', width=2)
         ), row=1, col=1)
 
@@ -2167,8 +2581,11 @@ def render_implementations_tab(t: np.ndarray, y_noisy: np.ndarray, y_clean: np.n
             x=t_zoom[:-1], y=epa_diff[start_idx:end_idx-1], mode='lines', name='EPA diff',
             line=dict(color='steelblue', width=1.5), showlegend=False
         ), row=2, col=1)
+        # Filter ionASE diff zoom to valid region
+        valid_zoom_diff = valid_interior[start_idx:end_idx-1]
+        ionase_diff_zoom = ionase_diff[start_idx:end_idx-1]
         fig_jumps.add_trace(go.Scatter(
-            x=t_zoom[:-1], y=ionase_diff[start_idx:end_idx-1], mode='lines', name='ionASE diff',
+            x=t_zoom[:-1][valid_zoom_diff], y=ionase_diff_zoom[valid_zoom_diff], mode='lines', name='ionASE diff',
             line=dict(color='orange', width=1.5), showlegend=False
         ), row=2, col=1)
 
@@ -2186,8 +2603,8 @@ def render_implementations_tab(t: np.ndarray, y_noisy: np.ndarray, y_clean: np.n
 
         # Statistics on jumps
         if np.sum(valid_interior) > 0:
-            epa_jump_std = np.std(epa_diff[valid_interior[:-1] if len(valid_interior) > 1 else valid_interior])
-            ionase_jump_std = np.std(ionase_diff[valid_interior[:-1] if len(valid_interior) > 1 else valid_interior])
+            epa_jump_std = np.std(epa_diff[valid_interior])
+            ionase_jump_std = np.std(ionase_diff[valid_interior])
 
             col1, col2 = st.columns(2)
             with col1:
@@ -2365,7 +2782,7 @@ def main():
     st.markdown("**Empirical Mode Decomposition with Kernel-Weighted Local Median**")
 
     # Method tabs (including Theory & Math, How It Works, and Implementations)
-    tabs = st.tabs(["Local Median", "Median", "Average", "Theory & Math", "How It Works", "Implementations"])
+    tabs = st.tabs(["Local Median", "Median", "Average", "EPA vs ionASE", "Theory & Math", "How It Works", "Implementations"])
 
     methods = ['local_median', 'median', 'average']
     method_names = ['Local Median (EPA Weighted)', 'Median (Unweighted)', 'Average (NW Mean)']
@@ -2418,16 +2835,20 @@ def main():
             with col3:
                 st.metric("Residual ||Y - S_k||", f"{residual_norm:.4f}")
 
-    # Theory & Math Tab (4th tab)
+    # EPA vs ionASE Tab (4th tab)
     with tabs[3]:
+        render_epa_vs_ionase_tab(t, y_noisy, y_clean, h0, decay, k)
+
+    # Theory & Math Tab (5th tab)
+    with tabs[4]:
         render_theory_tab()
 
-    # How It Works Tab (5th tab)
-    with tabs[4]:
+    # How It Works Tab (6th tab)
+    with tabs[5]:
         render_computation_tab()
 
-    # Implementations Tab (6th tab)
-    with tabs[5]:
+    # Implementations Tab (7th tab)
+    with tabs[6]:
         render_implementations_tab(t, y_noisy, y_clean, h0, decay, k)
 
     # Metrics comparison table

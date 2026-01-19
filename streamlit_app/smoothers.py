@@ -408,8 +408,25 @@ def ionase_kernel_weights(t_idx: int, n: int, h: float) -> np.ndarray:
     """
     ionASE-style kernel weights: K_h(s - t) = K((s-t)/(n*h)) / h
 
-    Key difference from our EPA: ionASE normalizes by bandwidth h
-    and uses index-based distances scaled by n.
+    Key Differences from EPA Implementation
+    ---------------------------------------
+    1. **Index-based vs time-based distances**:
+       - EPA uses: u = (t[j] - t[i]) / h  (continuous time difference)
+       - ionASE uses: u = (j - i) / n     (index difference scaled by n)
+
+       For uniformly spaced time t = linspace(0, 1, n):
+       - EPA: u = (j - i) / ((n-1) * h)
+       - ionASE: u = (j - i) / (n * h)
+
+       Difference factor: n/(n-1), which approaches 1 for large n.
+       For n=2000: factor = 1.0005 (negligible).
+
+    2. **Division by h (bandwidth normalization)**:
+       The formula K(u/h) / h is standard KDE normalization for density estimation.
+       For weighted MEDIAN computation, this is HARMLESS because:
+       - Weights are scale-invariant for median calculation
+       - Weights get re-normalized: cumsum / total_weight
+       - The /h cancels out and does not affect the median result
 
     Parameters
     ----------
@@ -418,7 +435,7 @@ def ionase_kernel_weights(t_idx: int, n: int, h: float) -> np.ndarray:
     n : int
         Total number of points
     h : float
-        Bandwidth parameter (fraction of total signal)
+        Bandwidth parameter (fraction of total signal length)
 
     Returns
     -------
