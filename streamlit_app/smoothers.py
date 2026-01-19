@@ -284,3 +284,419 @@ def compute_metrics(y_estimated: np.ndarray, y_true: np.ndarray) -> Tuple[float,
     rmse = float(np.sqrt(np.mean((y_estimated - y_true) ** 2)))
     mae = float(np.mean(np.abs(y_estimated - y_true)))
     return rmse, mae
+
+
+# =============================================================================
+# Running Median (ionASE-style) Implementation for Comparison
+# =============================================================================
+
+def running_median_heap(arr: np.ndarray, k: int) -> np.ndarray:
+    """
+    Simple running median with fixed window size k.
+
+    ionASE-style: fixed window, unweighted median, asymmetric boundaries.
+    For comparison with EPA kernel-weighted approach.
+
+    Parameters
+    ----------
+    arr : array
+        Input signal values
+    k : int
+        Window size (will be forced to odd)
+
+    Returns
+    -------
+    medians : array
+        Running median smoothed signal
+    """
+    if k % 2 == 0:
+        k += 1
+    n = len(arr)
+    half_k = k // 2
+    medians = np.zeros(n)
+
+    for i in range(n):
+        left = max(0, i - half_k)
+        right = min(n - 1, i + half_k)
+        medians[i] = np.median(arr[left:right + 1])
+
+    return medians
+
+
+def bandwidth_to_window_size(h: float, t: np.ndarray) -> int:
+    """
+    Convert continuous bandwidth h to integer window size k.
+
+    Parameters
+    ----------
+    h : float
+        Continuous bandwidth (kernel half-width)
+    t : array
+        Time array (used to compute point spacing)
+
+    Returns
+    -------
+    k : int
+        Integer window size (always odd, minimum 3)
+    """
+    dt = t[1] - t[0] if len(t) > 1 else 1.0
+    k = int(2 * h / dt) + 1
+    if k % 2 == 0:
+        k += 1
+    return max(3, k)
+
+
+def emd_iteration_heap(y: np.ndarray, window_size: int, k_max: int,
+                       decay_bandwidth: bool = False,
+                       decay: float = 1.414) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    """
+    EMD iteration using running median (ionASE-style).
+
+    Key difference from EPA approach: NO bandwidth decay by default.
+    The ionASE implementation uses constant window size throughout iterations.
+
+    Parameters
+    ----------
+    y : array
+        Input signal
+    window_size : int
+        Initial window size (must be odd)
+    k_max : int
+        Maximum number of iterations
+    decay_bandwidth : bool
+        If True, decay window size each iteration (not standard for ionASE)
+    decay : float
+        Decay factor if decay_bandwidth=True
+
+    Returns
+    -------
+    X_list : list of arrays
+        X^(k) for k = 0, 1, ..., k_max
+    X_tilde_list : list of arrays
+        X_tilde^(k) for k = 1, ..., k_max
+    """
+    X_list = [y.copy()]
+    X_tilde_list = []
+    X_current = y.copy()
+    current_window = window_size
+
+    # Ensure odd window size
+    if current_window % 2 == 0:
+        current_window += 1
+
+    for k in range(1, k_max + 1):
+        X_tilde = running_median_heap(X_current, current_window)
+        X_tilde_list.append(X_tilde)
+        X_next = X_current - X_tilde
+        X_list.append(X_next)
+        X_current = X_next
+
+        if decay_bandwidth:
+            current_window = max(3, int(current_window / decay))
+            if current_window % 2 == 0:
+                current_window += 1
+
+    return X_list, X_tilde_list
+
+
+# =============================================================================
+# ionASE-style Local Median Implementation for Comparison
+# Based on: https://github.com/ionASE-coder/A_New_EMD_Approach
+# =============================================================================
+
+def ionase_kernel_weights(t_idx: int, n: int, h: float) -> np.ndarray:
+    """
+    ionASE-style kernel weights: K_h(s - t) = K((s-t)/(n*h)) / h
+
+    Key difference from our EPA: ionASE normalizes by bandwidth h
+    and uses index-based distances scaled by n.
+
+    Parameters
+    ----------
+    t_idx : int
+        Index of evaluation point
+    n : int
+        Total number of points
+    h : float
+        Bandwidth parameter (fraction of total signal)
+
+    Returns
+    -------
+    weights : array
+        Kernel weights for all points
+    """
+    s = np.arange(n)
+    # ionASE uses index-based distance scaled by n
+    u = (s - t_idx) / n
+    # Epanechnikov kernel with bandwidth normalization
+    mask = np.abs(u / h) <= 1
+    weights = np.zeros(n, dtype=float)
+    weights[mask] = (0.75 * (1 - (u[mask] / h) ** 2)) / h
+    return weights
+
+
+def ionase_weighted_median(x: np.ndarray, weights: np.ndarray) -> float:
+    """
+    ionASE-style weighted median: NO interpolation, exact index.
+
+    Key difference from our EPA: ionASE returns x[k] at exact index
+    where cumsum first crosses 0.5, without linear interpolation.
+    This can cause micro-jumps in the output.
+
+    Parameters
+    ----------
+    x : array
+        Signal values
+    weights : array
+        Kernel weights
+
+    Returns
+    -------
+    median : float
+        Weighted median value
+    """
+    mask = weights > 0
+    if not np.any(mask):
+        return np.nan
+
+    x_filtered = x[mask]
+    w_filtered = weights[mask]
+
+    sorted_idx = np.argsort(x_filtered)
+    x_sorted = x_filtered[sorted_idx]
+    w_sorted = w_filtered[sorted_idx]
+
+    cumsum = np.cumsum(w_sorted)
+    median_idx = np.searchsorted(cumsum, cumsum[-1] / 2)
+
+    # ionASE: return exact value at index, NO interpolation
+    return x_sorted[min(median_idx, len(x_sorted) - 1)]
+
+
+def ionase_local_median_fit(x: np.ndarray, h: float) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    ionASE-style local median fit with boundary trimming.
+
+    Key difference from our EPA: Returns NaN outside valid range [h*n, (1-h)*n].
+    This avoids boundary effects but reduces usable signal length.
+
+    Parameters
+    ----------
+    x : array
+        Input signal
+    h : float
+        Bandwidth parameter (fraction of total signal)
+
+    Returns
+    -------
+    x_tilde : array
+        Smoothed signal (NaN outside valid range)
+    valid_mask : array
+        Boolean mask indicating valid (non-NaN) points
+    """
+    n = len(x)
+    x_tilde = np.full(n, np.nan)
+
+    # Boundary trimming: only compute in valid range
+    t_min = int(np.ceil(h * n))
+    t_max = int(np.floor((1 - h) * n))
+
+    # Ensure at least some valid range
+    t_min = max(0, t_min)
+    t_max = min(n - 1, t_max)
+
+    for t in range(t_min, t_max + 1):
+        weights = ionase_kernel_weights(t, n, h)
+        x_tilde[t] = ionase_weighted_median(x, weights)
+
+    valid_mask = ~np.isnan(x_tilde)
+    return x_tilde, valid_mask
+
+
+def ionase_emd_decomposition(x: np.ndarray, h_init: float, decay: float,
+                              k_max: int) -> Tuple[List[np.ndarray], np.ndarray, np.ndarray]:
+    """
+    ionASE-style EMD with NaN propagation through iterations.
+
+    Key difference from our EPA: NaN regions accumulate through iterations,
+    reducing the valid signal region at each step.
+
+    Parameters
+    ----------
+    x : array
+        Input signal
+    h_init : float
+        Initial bandwidth
+    decay : float
+        Bandwidth decay factor
+    k_max : int
+        Maximum iterations
+
+    Returns
+    -------
+    imfs : list of arrays
+        Extracted smooth components (IMFs) at each iteration
+    residual : array
+        Final residual
+    combined_mask : array
+        Boolean mask of points valid across all iterations
+    """
+    n = len(x)
+    residual = x.copy()
+    imfs = []
+    combined_mask = np.ones(n, dtype=bool)
+    h_k = h_init
+
+    for k in range(k_max):
+        x_tilde, valid_mask = ionase_local_median_fit(residual, h_k)
+        combined_mask &= valid_mask
+        imfs.append(x_tilde.copy())
+        # Update residual only where valid
+        residual = np.where(valid_mask, residual - x_tilde, residual)
+        # Bandwidth decay
+        h_k = h_k / decay
+
+    return imfs, residual, combined_mask
+
+
+def epa_detailed_computation(t: np.ndarray, y: np.ndarray, t_i: float, h: float) -> dict:
+    """
+    Return detailed computation steps for EPA local median at point t_i.
+
+    Useful for step-by-step algorithm trace visualization.
+
+    Parameters
+    ----------
+    t : array
+        Time points
+    y : array
+        Signal values
+    t_i : float
+        Evaluation point
+    h : float
+        Bandwidth
+
+    Returns
+    -------
+    details : dict
+        All intermediate computation values
+    """
+    u = (t - t_i) / h
+    weights = epanechnikov_kernel(u)
+
+    # Sort by y values
+    sorted_indices = np.argsort(y)
+    y_sorted = y[sorted_indices]
+    weights_sorted = weights[sorted_indices]
+    u_sorted = u[sorted_indices]
+    t_sorted = t[sorted_indices]
+
+    # Cumulative weights
+    total_weight = np.sum(weights_sorted)
+    if total_weight > 0:
+        cumsum_norm = np.cumsum(weights_sorted) / total_weight
+    else:
+        cumsum_norm = np.zeros_like(weights_sorted)
+
+    # Find median via 0.5 crossing WITH interpolation
+    idx = np.searchsorted(cumsum_norm, 0.5)
+    if idx >= len(y_sorted):
+        median_result = y_sorted[-1]
+        alpha = 1.0
+    elif idx == 0:
+        median_result = y_sorted[0]
+        alpha = 0.0
+    else:
+        c_prev = cumsum_norm[idx - 1]
+        c_curr = cumsum_norm[idx]
+        if c_curr > c_prev:
+            alpha = (0.5 - c_prev) / (c_curr - c_prev)
+        else:
+            alpha = 0.5
+        alpha = np.clip(alpha, 0.0, 1.0)
+        median_result = y_sorted[idx - 1] + alpha * (y_sorted[idx] - y_sorted[idx - 1])
+
+    return {
+        't': t,
+        'y': y,
+        't_i': t_i,
+        'h': h,
+        'u': u,
+        'weights': weights,
+        'y_sorted': y_sorted,
+        'weights_sorted': weights_sorted,
+        'u_sorted': u_sorted,
+        't_sorted': t_sorted,
+        'cumsum_norm': cumsum_norm,
+        'total_weight': total_weight,
+        'median_idx': idx,
+        'alpha': alpha,
+        'median_result': median_result
+    }
+
+
+def ionase_detailed_computation(x: np.ndarray, t_idx: int, h: float) -> dict:
+    """
+    Return detailed computation steps for ionASE local median at index t_idx.
+
+    Useful for step-by-step algorithm trace visualization.
+
+    Parameters
+    ----------
+    x : array
+        Signal values
+    t_idx : int
+        Evaluation index
+    h : float
+        Bandwidth
+
+    Returns
+    -------
+    details : dict
+        All intermediate computation values
+    """
+    n = len(x)
+    weights = ionase_kernel_weights(t_idx, n, h)
+
+    # Filter to non-zero weights
+    mask = weights > 0
+    x_filtered = x[mask]
+    w_filtered = weights[mask]
+    indices_filtered = np.where(mask)[0]
+
+    # Sort by x values
+    sorted_idx = np.argsort(x_filtered)
+    x_sorted = x_filtered[sorted_idx]
+    w_sorted = w_filtered[sorted_idx]
+    original_indices_sorted = indices_filtered[sorted_idx]
+
+    # Cumulative weights
+    cumsum = np.cumsum(w_sorted)
+    total_weight = cumsum[-1] if len(cumsum) > 0 else 0
+    cumsum_norm = cumsum / total_weight if total_weight > 0 else cumsum
+
+    # Find median - NO interpolation (ionASE style)
+    median_idx = np.searchsorted(cumsum_norm, 0.5)
+    median_idx = min(median_idx, len(x_sorted) - 1) if len(x_sorted) > 0 else 0
+
+    median_result = x_sorted[median_idx] if len(x_sorted) > 0 else np.nan
+
+    return {
+        'x': x,
+        't_idx': t_idx,
+        'h': h,
+        'n': n,
+        'weights': weights,
+        'mask': mask,
+        'x_filtered': x_filtered,
+        'w_filtered': w_filtered,
+        'indices_filtered': indices_filtered,
+        'x_sorted': x_sorted,
+        'w_sorted': w_sorted,
+        'original_indices_sorted': original_indices_sorted,
+        'cumsum': cumsum,
+        'cumsum_norm': cumsum_norm,
+        'total_weight': total_weight,
+        'median_idx': median_idx,
+        'median_result': median_result
+    }

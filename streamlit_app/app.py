@@ -20,7 +20,12 @@ import gzip
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from smoothers import emd_iteration, compute_metrics
+from smoothers import (
+    emd_iteration, compute_metrics, epa_local_median,
+    running_median_heap, bandwidth_to_window_size, emd_iteration_heap,
+    ionase_kernel_weights, ionase_weighted_median, ionase_local_median_fit,
+    ionase_emd_decomposition, epa_detailed_computation, ionase_detailed_computation
+)
 from signals import generate_amfm_signal, get_default_signal_params, get_smoothing_defaults
 
 
@@ -1592,6 +1597,634 @@ def render_theory_tab():
         """)
 
 
+def render_implementations_tab(t: np.ndarray, y_noisy: np.ndarray, y_clean: np.ndarray,
+                                h0: float, decay: float, k: int):
+    """Render the Implementations comparison tab comparing EPA vs ionASE algorithms."""
+
+    st.header("Implementation Comparison: EPA vs ionASE")
+
+    st.markdown("""
+    This tab provides a **full algorithm trace** comparing our EPA kernel-weighted local median
+    implementation with the ionASE-coder implementation from the
+    [A New EMD Approach](https://github.com/ionASE-coder/A_New_EMD_Approach/tree/main/03%20Local%20Median%20Approach)
+    repository.
+    """)
+
+    # ========== SECTION 1: Key Differences Table ==========
+    with st.expander("1. Key Differences Summary", expanded=True):
+        st.markdown("### Side-by-Side Comparison")
+
+        st.markdown("""
+        Both implementations use the **same core approach**: Epanechnikov kernel + weighted median + bandwidth decay.
+        The differences are in implementation details that affect boundary handling and output smoothness.
+        """)
+
+        comparison_data = {
+            'Aspect': [
+                'Kernel Function',
+                'Weight Normalization',
+                'Median Computation',
+                'Boundary Handling',
+                'Output Smoothness',
+                'NaN Propagation'
+            ],
+            'Our EPA': [
+                'K(u) = 0.75(1-u^2) for |u| <= 1',
+                'Raw kernel weights (unnormalized)',
+                'Linear interpolation at 0.5 crossing',
+                'Full coverage (asymmetric windows at edges)',
+                'Smoother (interpolated)',
+                'None - always produces values'
+            ],
+            'ionASE Local Median': [
+                'K(u) = 0.75(1-u^2) for |u| <= 1 (SAME)',
+                'Normalized by h: K(u/h) / h',
+                'Exact index (no interpolation)',
+                'NaN trim to [h*n, (1-h)*n]',
+                'Micro-jumps possible',
+                'Mask accumulates through iterations'
+            ]
+        }
+
+        df_comparison = pd.DataFrame(comparison_data)
+        st.dataframe(df_comparison, hide_index=True, use_container_width=True)
+
+        st.info("""
+        **Key Insight**: The most significant difference is **boundary handling**. ionASE returns NaN
+        outside the valid range, while our EPA computes values for all points using asymmetric windows
+        at boundaries.
+        """)
+
+    # ========== SECTION 2: Step-by-Step Trace ==========
+    with st.expander("2. Step-by-Step Computation Trace", expanded=True):
+        st.markdown("### Trace Computation at a Single Point")
+
+        # Select evaluation point
+        n = len(t)
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            t_idx = st.slider(
+                "Select evaluation index",
+                min_value=0,
+                max_value=n - 1,
+                value=n // 2,
+                help="Index of point where we'll trace the computation"
+            )
+        with col2:
+            st.metric("t value", f"{t[t_idx]:.4f}")
+            st.metric("y value", f"{y_noisy[t_idx]:.4f}")
+
+        # Compute h_k for current iteration
+        h_k = h0 / (decay ** (k - 1))
+        st.markdown(f"**Current bandwidth h_k = h0 / decay^(k-1) = {h0:.3f} / {decay:.3f}^{k-1} = {h_k:.4f}**")
+
+        # Get detailed computations
+        epa_details = epa_detailed_computation(t, y_noisy, t[t_idx], h_k)
+        ionase_details = ionase_detailed_computation(y_noisy, t_idx, h_k)
+
+        st.markdown("---")
+        st.markdown("### Weight Computation Comparison")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("#### EPA Weights")
+            st.markdown(f"""
+            **Formula**: `u = (t - t_i) / h`
+
+            **Kernel**: `K(u) = 0.75 * (1 - u^2)` for |u| <= 1
+
+            - Points in window: {np.sum(epa_details['weights'] > 0)}
+            - Total weight: {epa_details['total_weight']:.4f}
+            """)
+
+            # Show weight distribution
+            fig_epa_weights = go.Figure()
+            fig_epa_weights.add_trace(go.Bar(
+                x=np.arange(len(epa_details['weights'])),
+                y=epa_details['weights'],
+                marker_color=['steelblue' if w > 0 else 'lightgray' for w in epa_details['weights']],
+                name='EPA Weights'
+            ))
+            fig_epa_weights.add_vline(x=t_idx, line=dict(color='red', dash='dash', width=2))
+            fig_epa_weights.update_layout(
+                height=250,
+                title=dict(text='EPA Kernel Weights', x=0.5),
+                xaxis_title='Index',
+                yaxis_title='Weight',
+                margin=dict(l=50, r=30, t=50, b=40)
+            )
+            st.plotly_chart(fig_epa_weights, use_container_width=True)
+
+        with col2:
+            st.markdown("#### ionASE Weights")
+            st.markdown(f"""
+            **Formula**: `u = (s - t_idx) / n`
+
+            **Kernel**: `K(u/h) / h` for |u/h| <= 1
+
+            - Points in window: {np.sum(ionase_details['weights'] > 0)}
+            - Total weight: {ionase_details['total_weight']:.4f}
+            """)
+
+            # Show weight distribution
+            fig_ionase_weights = go.Figure()
+            fig_ionase_weights.add_trace(go.Bar(
+                x=np.arange(len(ionase_details['weights'])),
+                y=ionase_details['weights'],
+                marker_color=['orange' if w > 0 else 'lightgray' for w in ionase_details['weights']],
+                name='ionASE Weights'
+            ))
+            fig_ionase_weights.add_vline(x=t_idx, line=dict(color='red', dash='dash', width=2))
+            fig_ionase_weights.update_layout(
+                height=250,
+                title=dict(text='ionASE Kernel Weights', x=0.5),
+                xaxis_title='Index',
+                yaxis_title='Weight',
+                margin=dict(l=50, r=30, t=50, b=40)
+            )
+            st.plotly_chart(fig_ionase_weights, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### Cumulative Weight & Median Selection")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("#### EPA: Linear Interpolation")
+
+            # Show cumulative weight plot
+            active_mask = epa_details['weights_sorted'] > 0
+            n_active = np.sum(active_mask)
+
+            if n_active > 0:
+                fig_epa_cumsum = go.Figure()
+                fig_epa_cumsum.add_trace(go.Scatter(
+                    x=np.arange(n_active),
+                    y=epa_details['cumsum_norm'][active_mask],
+                    mode='lines+markers',
+                    line=dict(color='steelblue', width=2),
+                    marker=dict(size=6),
+                    name='Cumsum'
+                ))
+                fig_epa_cumsum.add_hline(y=0.5, line=dict(color='red', dash='dash', width=2))
+
+                # Mark interpolation point
+                if epa_details['alpha'] < 1.0 and epa_details['median_idx'] > 0:
+                    fig_epa_cumsum.add_trace(go.Scatter(
+                        x=[epa_details['median_idx'] - 1 + epa_details['alpha']],
+                        y=[0.5],
+                        mode='markers',
+                        marker=dict(size=14, color='red', symbol='star'),
+                        name='Interpolation Point'
+                    ))
+
+                fig_epa_cumsum.update_layout(
+                    height=250,
+                    title=dict(text='EPA Cumulative Weights', x=0.5),
+                    xaxis_title='Sorted Index',
+                    yaxis_title='Cumulative Weight',
+                    margin=dict(l=50, r=30, t=50, b=40)
+                )
+                st.plotly_chart(fig_epa_cumsum, use_container_width=True)
+
+            st.success(f"""
+            **EPA Result**: {epa_details['median_result']:.6f}
+
+            - Crossing index: {epa_details['median_idx']}
+            - Interpolation alpha: {epa_details['alpha']:.4f}
+            - **Linear interpolation** between sorted values
+            """)
+
+        with col2:
+            st.markdown("#### ionASE: Exact Index")
+
+            # Show cumulative weight plot
+            if len(ionase_details['cumsum_norm']) > 0:
+                fig_ionase_cumsum = go.Figure()
+                fig_ionase_cumsum.add_trace(go.Scatter(
+                    x=np.arange(len(ionase_details['cumsum_norm'])),
+                    y=ionase_details['cumsum_norm'],
+                    mode='lines+markers',
+                    line=dict(color='orange', width=2),
+                    marker=dict(size=6),
+                    name='Cumsum'
+                ))
+                fig_ionase_cumsum.add_hline(y=0.5, line=dict(color='red', dash='dash', width=2))
+
+                # Mark exact index
+                fig_ionase_cumsum.add_trace(go.Scatter(
+                    x=[ionase_details['median_idx']],
+                    y=[ionase_details['cumsum_norm'][ionase_details['median_idx']] if ionase_details['median_idx'] < len(ionase_details['cumsum_norm']) else 0.5],
+                    mode='markers',
+                    marker=dict(size=14, color='red', symbol='star'),
+                    name='Exact Index'
+                ))
+
+                fig_ionase_cumsum.update_layout(
+                    height=250,
+                    title=dict(text='ionASE Cumulative Weights', x=0.5),
+                    xaxis_title='Sorted Index',
+                    yaxis_title='Cumulative Weight',
+                    margin=dict(l=50, r=30, t=50, b=40)
+                )
+                st.plotly_chart(fig_ionase_cumsum, use_container_width=True)
+
+            st.warning(f"""
+            **ionASE Result**: {ionase_details['median_result']:.6f}
+
+            - Selected index: {ionase_details['median_idx']}
+            - **NO interpolation** - returns exact sorted value
+            """)
+
+        # Difference
+        diff = abs(epa_details['median_result'] - ionase_details['median_result'])
+        if diff > 0.001:
+            st.error(f"**Difference at this point**: {diff:.6f}")
+        else:
+            st.info(f"**Difference at this point**: {diff:.6f} (negligible)")
+
+    # ========== SECTION 3: Boundary Behavior ==========
+    with st.expander("3. Boundary Behavior Visualization", expanded=True):
+        st.markdown("### How Each Method Handles Boundaries")
+
+        h_k = h0 / (decay ** (k - 1))
+        n = len(t)
+
+        # Compute boundary indices for ionASE
+        t_min_ionase = int(np.ceil(h_k * n))
+        t_max_ionase = int(np.floor((1 - h_k) * n))
+
+        st.markdown(f"""
+        For **h_k = {h_k:.4f}** and **n = {n}** points:
+
+        - **ionASE valid range**: indices [{t_min_ionase}, {t_max_ionase}]
+        - **ionASE NaN regions**: [0, {t_min_ionase - 1}] and [{t_max_ionase + 1}, {n - 1}]
+        - **EPA**: Computes all {n} points (asymmetric windows at boundaries)
+        """)
+
+        # Compute both smoothers for single iteration
+        epa_smooth = epa_local_median(t, y_noisy, h_k)
+        ionase_smooth, ionase_valid = ionase_local_median_fit(y_noisy, h_k)
+
+        # Create boundary comparison plot
+        fig_boundary = make_subplots(
+            rows=2, cols=1,
+            subplot_titles=['EPA Local Median (Full Coverage)', 'ionASE Local Median (Trimmed Boundaries)'],
+            vertical_spacing=0.15
+        )
+
+        # EPA plot
+        fig_boundary.add_trace(go.Scatter(
+            x=t, y=y_noisy, mode='lines', name='Noisy Signal',
+            line=dict(color='gray', width=1), opacity=0.5
+        ), row=1, col=1)
+        fig_boundary.add_trace(go.Scatter(
+            x=t, y=epa_smooth, mode='lines', name='EPA Smooth',
+            line=dict(color='steelblue', width=2)
+        ), row=1, col=1)
+        fig_boundary.add_trace(go.Scatter(
+            x=t, y=y_clean, mode='lines', name='Ground Truth',
+            line=dict(color='green', width=1, dash='dot')
+        ), row=1, col=1)
+
+        # ionASE plot
+        fig_boundary.add_trace(go.Scatter(
+            x=t, y=y_noisy, mode='lines', name='Noisy Signal',
+            line=dict(color='gray', width=1), opacity=0.5, showlegend=False
+        ), row=2, col=1)
+        fig_boundary.add_trace(go.Scatter(
+            x=t, y=ionase_smooth, mode='lines', name='ionASE Smooth',
+            line=dict(color='orange', width=2)
+        ), row=2, col=1)
+        fig_boundary.add_trace(go.Scatter(
+            x=t, y=y_clean, mode='lines', name='Ground Truth',
+            line=dict(color='green', width=1, dash='dot'), showlegend=False
+        ), row=2, col=1)
+
+        # Add NaN region shading for ionASE
+        if t_min_ionase > 0:
+            fig_boundary.add_vrect(
+                x0=t[0], x1=t[t_min_ionase - 1] if t_min_ionase > 0 else t[0],
+                fillcolor='rgba(255,0,0,0.1)', line_width=0,
+                annotation_text='NaN', row=2, col=1
+            )
+        if t_max_ionase < n - 1:
+            fig_boundary.add_vrect(
+                x0=t[t_max_ionase + 1] if t_max_ionase < n - 1 else t[-1], x1=t[-1],
+                fillcolor='rgba(255,0,0,0.1)', line_width=0,
+                annotation_text='NaN', row=2, col=1
+            )
+
+        fig_boundary.update_layout(
+            height=500,
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),
+            margin=dict(l=50, r=30, t=80, b=40)
+        )
+
+        fig_boundary.update_xaxes(title_text='t', row=2, col=1)
+        fig_boundary.update_yaxes(title_text='Amplitude', row=1, col=1)
+        fig_boundary.update_yaxes(title_text='Amplitude', row=2, col=1)
+
+        st.plotly_chart(fig_boundary, use_container_width=True)
+
+        # Metrics comparison on valid region only
+        valid_mask = ionase_valid
+        n_valid = np.sum(valid_mask)
+
+        if n_valid > 0:
+            rmse_epa = np.sqrt(np.mean((epa_smooth[valid_mask] - y_clean[valid_mask]) ** 2))
+            rmse_ionase = np.sqrt(np.mean((ionase_smooth[valid_mask] - y_clean[valid_mask]) ** 2))
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("EPA RMSE (valid region)", f"{rmse_epa:.4f}")
+            with col2:
+                st.metric("ionASE RMSE (valid region)", f"{rmse_ionase:.4f}")
+            with col3:
+                st.metric("Valid points", f"{n_valid} / {n} ({100*n_valid/n:.1f}%)")
+
+    # ========== SECTION 4: Single Iteration Comparison ==========
+    with st.expander("4. Single Iteration Comparison", expanded=True):
+        st.markdown(f"### Comparing Smoothed Output at Iteration k={k}")
+
+        h_k = h0 / (decay ** (k - 1))
+
+        # Compute both
+        epa_smooth = epa_local_median(t, y_noisy, h_k)
+        ionase_smooth, ionase_valid = ionase_local_median_fit(y_noisy, h_k)
+
+        # 2x2 comparison plot
+        fig_compare = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=[
+                'EPA Smooth Component',
+                'ionASE Smooth Component',
+                'Difference (EPA - ionASE)',
+                'Both vs Ground Truth'
+            ],
+            vertical_spacing=0.12,
+            horizontal_spacing=0.08
+        )
+
+        # EPA smooth
+        fig_compare.add_trace(go.Scatter(
+            x=t, y=epa_smooth, mode='lines', name='EPA',
+            line=dict(color='steelblue', width=2)
+        ), row=1, col=1)
+
+        # ionASE smooth
+        fig_compare.add_trace(go.Scatter(
+            x=t, y=ionase_smooth, mode='lines', name='ionASE',
+            line=dict(color='orange', width=2)
+        ), row=1, col=2)
+
+        # Difference
+        diff = epa_smooth - ionase_smooth
+        diff_valid = np.where(ionase_valid, diff, np.nan)
+        fig_compare.add_trace(go.Scatter(
+            x=t, y=diff_valid, mode='lines', name='Diff',
+            line=dict(color='purple', width=1.5)
+        ), row=2, col=1)
+        fig_compare.add_hline(y=0, line=dict(color='gray', dash='dash'), row=2, col=1)
+
+        # Both vs ground truth
+        fig_compare.add_trace(go.Scatter(
+            x=t, y=y_clean, mode='lines', name='Ground Truth',
+            line=dict(color='green', width=2)
+        ), row=2, col=2)
+        fig_compare.add_trace(go.Scatter(
+            x=t, y=epa_smooth, mode='lines', name='EPA',
+            line=dict(color='steelblue', width=1.5, dash='dot'), showlegend=False
+        ), row=2, col=2)
+        fig_compare.add_trace(go.Scatter(
+            x=t[ionase_valid], y=ionase_smooth[ionase_valid], mode='lines', name='ionASE',
+            line=dict(color='orange', width=1.5, dash='dash'), showlegend=False
+        ), row=2, col=2)
+
+        fig_compare.update_layout(
+            height=500,
+            showlegend=True,
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),
+            margin=dict(l=50, r=30, t=80, b=40)
+        )
+
+        for i in range(1, 3):
+            for j in range(1, 3):
+                fig_compare.update_xaxes(title_text='t' if i == 2 else '', row=i, col=j)
+                fig_compare.update_yaxes(title_text='Amplitude' if j == 1 else '', row=i, col=j)
+
+        st.plotly_chart(fig_compare, use_container_width=True)
+
+        # Statistics on difference
+        valid_diff = diff[ionase_valid]
+        if len(valid_diff) > 0:
+            st.markdown(f"""
+            **Difference Statistics (on valid region):**
+            - Mean: {np.mean(valid_diff):.6f}
+            - Std: {np.std(valid_diff):.6f}
+            - Max: {np.max(np.abs(valid_diff)):.6f}
+            - 95th percentile: {np.percentile(np.abs(valid_diff), 95):.6f}
+            """)
+
+    # ========== SECTION 5: Full EMD Comparison ==========
+    with st.expander("5. Full EMD Decomposition Comparison", expanded=False):
+        st.markdown(f"### Comparing Full EMD with k={k} Iterations")
+
+        # Compute full EMD for both methods
+        X_list_epa, X_tilde_list_epa = emd_iteration(t, y_noisy, h0, decay, k, 'local_median')
+        imfs_ionase, residual_ionase, combined_mask = ionase_emd_decomposition(y_noisy, h0, decay, k)
+
+        st.markdown(f"""
+        **ionASE NaN propagation**: After {k} iterations, only **{np.sum(combined_mask)}** of {n}
+        points ({100*np.sum(combined_mask)/n:.1f}%) remain valid.
+        """)
+
+        # Show iteration-by-iteration comparison
+        for iter_k in range(min(k, 3)):  # Show first 3 iterations
+            st.markdown(f"---\n#### Iteration {iter_k + 1}")
+
+            h_iter = h0 / (decay ** iter_k)
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                fig_epa_iter = go.Figure()
+                fig_epa_iter.add_trace(go.Scatter(
+                    x=t, y=X_tilde_list_epa[iter_k], mode='lines', name=f'EPA X_tilde^({iter_k+1})',
+                    line=dict(color='steelblue', width=2)
+                ))
+                fig_epa_iter.update_layout(
+                    height=200,
+                    title=dict(text=f'EPA Smooth Component (h={h_iter:.4f})', x=0.5),
+                    margin=dict(l=50, r=30, t=50, b=40),
+                    xaxis_title='t', yaxis_title='Amplitude'
+                )
+                st.plotly_chart(fig_epa_iter, use_container_width=True)
+
+            with col2:
+                fig_ionase_iter = go.Figure()
+                fig_ionase_iter.add_trace(go.Scatter(
+                    x=t, y=imfs_ionase[iter_k], mode='lines', name=f'ionASE X_tilde^({iter_k+1})',
+                    line=dict(color='orange', width=2)
+                ))
+                fig_ionase_iter.update_layout(
+                    height=200,
+                    title=dict(text=f'ionASE Smooth Component (h={h_iter:.4f})', x=0.5),
+                    margin=dict(l=50, r=30, t=50, b=40),
+                    xaxis_title='t', yaxis_title='Amplitude'
+                )
+                st.plotly_chart(fig_ionase_iter, use_container_width=True)
+
+        # Reconstruction comparison on valid region
+        st.markdown("---\n#### Reconstruction Comparison")
+
+        epa_recon = np.sum(X_tilde_list_epa[:k], axis=0)
+        ionase_recon = np.nansum(imfs_ionase[:k], axis=0)
+
+        fig_recon = go.Figure()
+        fig_recon.add_trace(go.Scatter(
+            x=t, y=y_clean, mode='lines', name='Ground Truth',
+            line=dict(color='green', width=2)
+        ))
+        fig_recon.add_trace(go.Scatter(
+            x=t, y=epa_recon, mode='lines', name='EPA Reconstruction',
+            line=dict(color='steelblue', width=1.5, dash='dot')
+        ))
+        fig_recon.add_trace(go.Scatter(
+            x=t[combined_mask], y=ionase_recon[combined_mask], mode='lines', name='ionASE Reconstruction',
+            line=dict(color='orange', width=1.5, dash='dash')
+        ))
+
+        fig_recon.update_layout(
+            height=300,
+            title=dict(text=f'Signal Reconstruction (Sum of k=1..{k} components)', x=0.5),
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),
+            xaxis_title='t', yaxis_title='Amplitude',
+            margin=dict(l=50, r=30, t=80, b=40)
+        )
+        st.plotly_chart(fig_recon, use_container_width=True)
+
+        # Metrics
+        if np.sum(combined_mask) > 0:
+            rmse_epa_valid = np.sqrt(np.mean((epa_recon[combined_mask] - y_clean[combined_mask]) ** 2))
+            rmse_ionase_valid = np.sqrt(np.mean((ionase_recon[combined_mask] - y_clean[combined_mask]) ** 2))
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("EPA RMSE (valid region)", f"{rmse_epa_valid:.4f}")
+            with col2:
+                st.metric("ionASE RMSE (valid region)", f"{rmse_ionase_valid:.4f}")
+
+    # ========== SECTION 6: Micro-Jump Analysis ==========
+    with st.expander("6. Micro-Jump Analysis (Interpolation Effect)", expanded=False):
+        st.markdown("### Comparing Output Smoothness")
+
+        st.markdown("""
+        The key difference in output quality comes from interpolation:
+        - **EPA**: Uses linear interpolation between sorted y values at the 0.5 cumulative weight crossing
+        - **ionASE**: Returns the exact y value at the crossing index (no interpolation)
+
+        This causes **micro-jumps** in the ionASE output when the crossing index changes abruptly.
+        """)
+
+        h_k = h0 / (decay ** (k - 1))
+
+        # Compute both smoothers
+        epa_smooth = epa_local_median(t, y_noisy, h_k)
+        ionase_smooth, ionase_valid = ionase_local_median_fit(y_noisy, h_k)
+
+        # Compute first differences (discrete derivative)
+        epa_diff = np.diff(epa_smooth)
+        ionase_diff = np.diff(ionase_smooth)
+
+        # Find valid region for comparison
+        valid_interior = ionase_valid[:-1] & ionase_valid[1:]
+
+        fig_jumps = make_subplots(
+            rows=2, cols=1,
+            subplot_titles=['Smoothed Signals (Zoomed Region)', 'First Difference (Derivative Proxy)'],
+            vertical_spacing=0.15
+        )
+
+        # Zoom to middle region
+        start_idx = n // 4
+        end_idx = 3 * n // 4
+        t_zoom = t[start_idx:end_idx]
+
+        # Smoothed signals zoom
+        fig_jumps.add_trace(go.Scatter(
+            x=t_zoom, y=epa_smooth[start_idx:end_idx], mode='lines', name='EPA',
+            line=dict(color='steelblue', width=2)
+        ), row=1, col=1)
+        fig_jumps.add_trace(go.Scatter(
+            x=t_zoom, y=ionase_smooth[start_idx:end_idx], mode='lines', name='ionASE',
+            line=dict(color='orange', width=2)
+        ), row=1, col=1)
+
+        # First differences
+        fig_jumps.add_trace(go.Scatter(
+            x=t_zoom[:-1], y=epa_diff[start_idx:end_idx-1], mode='lines', name='EPA diff',
+            line=dict(color='steelblue', width=1.5), showlegend=False
+        ), row=2, col=1)
+        fig_jumps.add_trace(go.Scatter(
+            x=t_zoom[:-1], y=ionase_diff[start_idx:end_idx-1], mode='lines', name='ionASE diff',
+            line=dict(color='orange', width=1.5), showlegend=False
+        ), row=2, col=1)
+
+        fig_jumps.update_layout(
+            height=450,
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),
+            margin=dict(l=50, r=30, t=80, b=40)
+        )
+
+        fig_jumps.update_xaxes(title_text='t', row=2, col=1)
+        fig_jumps.update_yaxes(title_text='Amplitude', row=1, col=1)
+        fig_jumps.update_yaxes(title_text='First Diff', row=2, col=1)
+
+        st.plotly_chart(fig_jumps, use_container_width=True)
+
+        # Statistics on jumps
+        if np.sum(valid_interior) > 0:
+            epa_jump_std = np.std(epa_diff[valid_interior[:-1] if len(valid_interior) > 1 else valid_interior])
+            ionase_jump_std = np.std(ionase_diff[valid_interior[:-1] if len(valid_interior) > 1 else valid_interior])
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("EPA First-Diff Std", f"{epa_jump_std:.6f}")
+            with col2:
+                st.metric("ionASE First-Diff Std", f"{ionase_jump_std:.6f}")
+
+            if ionase_jump_std > epa_jump_std * 1.1:
+                st.warning(f"""
+                **ionASE shows {ionase_jump_std/epa_jump_std:.1f}x higher variation in first differences**,
+                indicating more micro-jumps due to lack of interpolation.
+                """)
+            else:
+                st.info("Both methods show similar output smoothness at this bandwidth.")
+
+    # ========== SECTION 7: Summary ==========
+    st.markdown("---")
+    st.markdown("### Summary")
+
+    st.markdown("""
+    | Criterion | EPA Local Median | ionASE Local Median |
+    |-----------|------------------|---------------------|
+    | **Use case** | Production - need full signal coverage | Research - focus on interior region |
+    | **Boundaries** | Handles all points | Trims edges to avoid boundary effects |
+    | **Smoothness** | Smoother output (interpolated) | Potential micro-jumps |
+    | **Complexity** | O(n^2 log n) | O(n^2 log n) |
+    | **Multi-iteration** | No NaN propagation | NaN region grows |
+
+    **Recommendation**: Use EPA for applications requiring full signal reconstruction.
+    Use ionASE-style when focusing on signal interior and avoiding boundary artifacts is preferred.
+    """)
+
+    st.markdown("""
+    **External Reference**: [ionASE-coder/A_New_EMD_Approach - 03 Local Median Approach](https://github.com/ionASE-coder/A_New_EMD_Approach/tree/main/03%20Local%20Median%20Approach)
+    """)
+
+
 def main():
     """Main Streamlit app."""
 
@@ -1731,8 +2364,8 @@ def main():
     st.title("EMD Local Median Smoother")
     st.markdown("**Empirical Mode Decomposition with Kernel-Weighted Local Median**")
 
-    # Method tabs (including Theory & Math and How It Works)
-    tabs = st.tabs(["Local Median", "Median", "Average", "Theory & Math", "How It Works"])
+    # Method tabs (including Theory & Math, How It Works, and Implementations)
+    tabs = st.tabs(["Local Median", "Median", "Average", "Theory & Math", "How It Works", "Implementations"])
 
     methods = ['local_median', 'median', 'average']
     method_names = ['Local Median (EPA Weighted)', 'Median (Unweighted)', 'Average (NW Mean)']
@@ -1792,6 +2425,10 @@ def main():
     # How It Works Tab (5th tab)
     with tabs[4]:
         render_computation_tab()
+
+    # Implementations Tab (6th tab)
+    with tabs[5]:
+        render_implementations_tab(t, y_noisy, y_clean, h0, decay, k)
 
     # Metrics comparison table
     st.markdown("---")
