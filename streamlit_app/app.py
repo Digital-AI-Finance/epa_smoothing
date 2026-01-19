@@ -1239,6 +1239,117 @@ function weighted_median(y, w):
         \text{Linear interpolation: } \tilde{m} = y_{(k-1)} + \frac{0.5 - C_{k-1}}{C_k - C_{k-1}} (y_{(k)} - y_{(k-1)})
         """)
 
+    # ========== SECTION 5: Understanding Micro-Jumps ==========
+    with st.expander("5. Understanding Micro-Jumps in Smooth Output", expanded=False):
+        st.markdown("""
+        ### Why Micro-Jumps Occur
+
+        Even with n=4000 points, you may observe small discontinuities ("jumps") in the
+        smoothed output. This is **mathematically inherent** to the weighted median algorithm.
+        """)
+
+        st.markdown("**Root Cause:**")
+        st.markdown("""
+        1. `searchsorted()` finds the first index where cumulative weight >= 0.5
+        2. As we slide across the signal, small weight changes cause this index to flip
+        3. When the index changes, we interpolate between *different* pairs of sorted values
+        4. This creates micro-discontinuities even with linear interpolation
+        """)
+
+        st.markdown("**Example:**")
+        st.code("""
+Point i:   cumsum = [0.48, 0.52, ...] -> idx=1 -> interpolate y[0]..y[1]
+Point i+1: cumsum = [0.49, 0.51, ...] -> idx=1 -> same pair (smooth)
+Point i+2: cumsum = [0.51, 0.53, ...] -> idx=0 -> JUMP! different pair
+        """, language="text")
+
+        st.markdown("""
+        **Key Insight:** The interpolation is smooth *within* a pair of values, but
+        discontinuous *when the pair changes*.
+        """)
+
+        st.markdown("---")
+        st.markdown("### Mitigation Strategies")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.info("""
+            **1. Increase Bandwidth (h0)**
+
+            Larger windows average more points, reducing jump frequency.
+            The effective number of points in each window is approximately:
+
+            $n_{window} \\approx 2h \\cdot n$
+
+            More points = more stable median estimates.
+            """)
+
+        with col2:
+            st.success("""
+            **2. Accept as Feature**
+
+            The jumps indicate where the local median "switches" between dominant
+            values in the sorted order. This is actually informative:
+
+            - Shows transitions between local modes
+            - Reveals signal structure
+            - Preserves edge information
+            """)
+
+        with col3:
+            st.warning("""
+            **3. Post-Processing**
+
+            If continuous output is required, apply light Gaussian smoothing externally:
+
+            ```python
+            from scipy.ndimage import gaussian_filter1d
+            y_final = gaussian_filter1d(y_smooth, sigma=2)
+            ```
+
+            Trade-off: reduces robustness slightly.
+            """)
+
+        st.markdown("---")
+        st.markdown("### Mathematical Explanation")
+
+        st.markdown("""
+        The weighted median is computed via cumulative weights:
+        """)
+        st.latex(r"C_k = \frac{\sum_{j=1}^{k} w_{(j)}}{\sum_{j=1}^{n} w_j}")
+
+        st.markdown("""
+        The median is the value $y_{(k)}$ where $C_k$ first crosses 0.5. As we move
+        from evaluation point $t_i$ to $t_{i+1}$:
+
+        - The kernel weights $w_j = K((t_j - t_i)/h)$ shift slightly
+        - The sorted order of $(y, w)$ pairs may change
+        - The cumulative sum $C_k$ changes
+        - The index $k^*$ where $C_k \\geq 0.5$ may jump
+
+        When $k^*$ changes, we suddenly interpolate between a *different pair* of
+        sorted $y$ values, creating a discontinuity. This is unavoidable without
+        fundamentally changing the median definition.
+        """)
+
+        st.markdown("---")
+        st.markdown("### Comparison with Nadaraya-Watson Mean")
+
+        st.markdown("""
+        The NW mean (weighted average) does **not** have this issue because it uses
+        all points continuously:
+        """)
+        st.latex(r"\hat{m}(t) = \frac{\sum_j y_j \cdot K((t_j - t)/h)}{\sum_j K((t_j - t)/h)}")
+
+        st.markdown("""
+        As weights shift smoothly, the weighted average shifts smoothly. However,
+        the NW mean is **not robust** to outliers - a single extreme value can
+        dominate the estimate.
+
+        **The micro-jumps in the weighted median are the price we pay for robustness.**
+        """)
+
 
 def render_theory_tab():
     """Render the Theory & Math tab with full theoretical exposition."""
