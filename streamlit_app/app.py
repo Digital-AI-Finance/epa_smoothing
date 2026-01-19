@@ -16,6 +16,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pickle
+import gzip
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -34,11 +35,40 @@ st.set_page_config(
 
 @st.cache_resource
 def load_precomputed_data() -> Optional[Dict[str, Any]]:
-    """Load pre-computed data if available."""
-    data_path = Path(__file__).parent / 'precomputed_data.pkl'
-    if data_path.exists():
-        with open(data_path, 'rb') as f:
+    """Load pre-computed data from split gzipped files.
+
+    Supports both new split format (precomputed_data/ directory with .pkl.gz files)
+    and legacy single file format (precomputed_data.pkl) for backwards compatibility.
+    """
+    base_dir = Path(__file__).parent
+    data_dir = base_dir / 'precomputed_data'
+
+    # Try new split format first
+    if data_dir.exists():
+        metadata_path = data_dir / 'metadata.pkl.gz'
+        if metadata_path.exists():
+            # Load metadata
+            with gzip.open(metadata_path, 'rb') as f:
+                data = pickle.load(f)
+
+            # Load and merge all sigma files
+            data['results'] = {}
+            for sigma in data['sigma_values']:
+                filename = f'sigma_{sigma:.2f}.pkl.gz'
+                filepath = data_dir / filename
+                if filepath.exists():
+                    with gzip.open(filepath, 'rb') as f:
+                        data['results'][f'sigma_{sigma}'] = pickle.load(f)
+
+            if data['results']:
+                return data
+
+    # Fall back to legacy single file format
+    legacy_path = base_dir / 'precomputed_data.pkl'
+    if legacy_path.exists():
+        with open(legacy_path, 'rb') as f:
             return pickle.load(f)
+
     return None
 
 

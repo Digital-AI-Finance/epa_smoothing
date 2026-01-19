@@ -5,9 +5,9 @@ Generates pre-computed results for the parameter grid to enable
 instant response in the interactive app.
 
 Grid Parameters:
-- h0: [0.01, 0.02, 0.03, 0.05, 0.07, 0.10, 0.15, 0.20, 0.25, 0.30]
-- sigma: [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
-- decay: [1.1, 1.2, 1.3, 1.414, 1.5, 1.7, 2.0]
+- h0: [0.03, 0.05, 0.10, 0.15, 0.20, 0.30]
+- sigma: [0.10, 0.20, 0.30, 0.50]
+- decay: [1.2, 1.414, 1.7]
 - k: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 For each combination, we store:
@@ -15,12 +15,15 @@ For each combination, we store:
 - X_tilde_list: smooth component at each iteration
 - Metrics: RMSE, MAE for each method
 
+Output: Split gzipped files by sigma (~29 MB each) to stay under GitHub's 100 MB limit.
+
 Usage:
     python precompute.py
 """
 
 import numpy as np
 import pickle
+import gzip
 from pathlib import Path
 from typing import Dict, Any
 import time
@@ -154,7 +157,7 @@ def precompute_grid() -> Dict[str, Any]:
 
 
 def save_precomputed_data(data: Dict[str, Any], output_path: Path) -> None:
-    """Save pre-computed data to pickle file."""
+    """Save pre-computed data to pickle file (legacy single-file format)."""
     with open(output_path, 'wb') as f:
         pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -162,18 +165,71 @@ def save_precomputed_data(data: Dict[str, Any], output_path: Path) -> None:
     print(f"Saved: {output_path} ({size_mb:.2f} MB)")
 
 
+def save_split_precomputed_data(data: Dict[str, Any], output_dir: Path) -> None:
+    """Save precomputed data as split gzipped files by sigma.
+
+    Creates:
+    - metadata.pkl.gz: shared params (t, signal_params, grid values)
+    - sigma_X.XX.pkl.gz: per-sigma data (y_clean, y_noisy, iterations)
+
+    Each sigma file is ~29 MB (gzipped), well under GitHub's 100 MB limit.
+    """
+    output_dir.mkdir(exist_ok=True)
+    total_size = 0
+
+    # Save metadata (shared across all sigma)
+    metadata = {
+        't': data['t'],
+        'n_points': data['n_points'],
+        'signal_params': data['signal_params'],
+        'h0_values': data['h0_values'],
+        'sigma_values': data['sigma_values'],
+        'decay_values': data['decay_values'],
+        'k_max': data['k_max'],
+        'methods': data['methods']
+    }
+
+    metadata_path = output_dir / 'metadata.pkl.gz'
+    with gzip.open(metadata_path, 'wb', compresslevel=9) as f:
+        pickle.dump(metadata, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    meta_size = metadata_path.stat().st_size / (1024 * 1024)
+    total_size += meta_size
+    print(f"  metadata.pkl.gz: {meta_size:.2f} MB")
+
+    # Save per-sigma files
+    for sigma in data['sigma_values']:
+        sigma_key = f'sigma_{sigma}'
+        sigma_data = data['results'][sigma_key]
+        filename = f'sigma_{sigma:.2f}.pkl.gz'
+        filepath = output_dir / filename
+
+        with gzip.open(filepath, 'wb', compresslevel=9) as f:
+            pickle.dump(sigma_data, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+        size_mb = filepath.stat().st_size / (1024 * 1024)
+        total_size += size_mb
+        print(f"  {filename}: {size_mb:.2f} MB")
+
+    print(f"\nTotal: {total_size:.2f} MB across {len(data['sigma_values']) + 1} files")
+    print(f"Output directory: {output_dir}")
+
+
 def main():
     """Main entry point for pre-computation."""
-    output_path = Path(__file__).parent / 'precomputed_data.pkl'
+    base_dir = Path(__file__).parent
+    output_dir = base_dir / 'precomputed_data'
 
     print("EMD Local Median Pre-computation")
     print("=" * 50)
 
     data = precompute_grid()
-    save_precomputed_data(data, output_path)
+
+    print("\nSaving split gzipped files...")
+    save_split_precomputed_data(data, output_dir)
 
     print("\nPre-computation complete!")
-    print(f"Output: {output_path}")
+    print(f"Output: {output_dir}")
 
 
 if __name__ == '__main__':

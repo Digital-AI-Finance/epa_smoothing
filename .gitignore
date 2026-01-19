@@ -1,10 +1,57 @@
-# Python cache
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Large precomputed data (regenerate with: python precompute.py)
-streamlit_app/precomputed_data.pkl
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
 
 # IDE
 .idea/
 .vscode/
+*.swp
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# LaTeX auxiliary files
+*.aux
+*.log
+*.out
+*.toc
+*.nav
+*.snm
+*.vrb
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+temp/
+
+# Old single-file precomputed data (replaced by split gzipped files)
+streamlit_app/precomputed_data.pkl
+
+# Claude
+.claude/
+CLAUDE.md
