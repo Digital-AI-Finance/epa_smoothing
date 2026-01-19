@@ -420,9 +420,12 @@ def create_residual_analysis_plot(
                 # Add statistics annotation
                 mean_r = np.mean(residuals)
                 std_r = np.std(residuals)
+                # Plotly xref: 'x domain' for first, 'x2 domain' for second, etc.
+                xref = 'x domain' if i == 0 else f'x{i+1} domain'
+                yref = 'y domain' if i == 0 else f'y{i+1} domain'
                 fig.add_annotation(
                     x=0.5, y=0.95,
-                    xref=f'x{i+1} domain', yref=f'y{i+1} domain',
+                    xref=xref, yref=yref,
                     text=f'mean={mean_r:.3f}<br>std={std_r:.3f}',
                     showarrow=False,
                     font=dict(size=10),
@@ -497,6 +500,744 @@ def create_bandwidth_decay_plot(
     )
 
     return fig
+
+
+def create_kernel_window_figure(t_example, y_example, t_i, h, idx_i):
+    """Create Plotly figure showing kernel window at point t_i."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    # Find points within kernel window
+    u = (t_example - t_i) / h
+    weights = 0.75 * (1 - u**2) * (np.abs(u) <= 1)
+    in_window = np.abs(u) <= 1
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        row_heights=[0.6, 0.4],
+        subplot_titles=['Signal with Kernel Window', 'Kernel Weights'],
+        vertical_spacing=0.15
+    )
+
+    # Top: Signal with window highlight
+    fig.add_trace(go.Scatter(
+        x=t_example, y=y_example,
+        mode='lines+markers',
+        marker=dict(size=8, color='gray'),
+        line=dict(color='gray', width=1),
+        name='Signal'
+    ), row=1, col=1)
+
+    # Highlight points in window
+    fig.add_trace(go.Scatter(
+        x=t_example[in_window], y=y_example[in_window],
+        mode='markers',
+        marker=dict(size=12, color='blue', symbol='circle'),
+        name='In Window'
+    ), row=1, col=1)
+
+    # Current evaluation point
+    fig.add_trace(go.Scatter(
+        x=[t_i], y=[y_example[idx_i]],
+        mode='markers',
+        marker=dict(size=16, color='red', symbol='star'),
+        name=f't_i = {t_i:.1f}'
+    ), row=1, col=1)
+
+    # Window boundaries
+    fig.add_vline(x=t_i - h, line=dict(color='orange', dash='dash'), row=1, col=1)
+    fig.add_vline(x=t_i + h, line=dict(color='orange', dash='dash'), row=1, col=1)
+
+    # Bottom: Kernel weights
+    colors = ['blue' if w > 0 else 'lightgray' for w in weights]
+    fig.add_trace(go.Bar(
+        x=t_example, y=weights,
+        marker_color=colors,
+        name='Kernel Weights',
+        showlegend=False
+    ), row=2, col=1)
+
+    fig.update_layout(
+        height=450,
+        showlegend=True,
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),
+        margin=dict(l=50, r=30, t=60, b=40)
+    )
+
+    fig.update_xaxes(title_text='t', row=2, col=1)
+    fig.update_yaxes(title_text='y', row=1, col=1)
+    fig.update_yaxes(title_text='K(u)', row=2, col=1)
+
+    return fig
+
+
+def create_weighted_median_figure(y_sorted, weights_sorted, cumsum_norm):
+    """Create Plotly figure showing weighted median computation."""
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=['Sorted Values with Weights', 'Cumulative Weight'],
+        horizontal_spacing=0.12
+    )
+
+    n = len(y_sorted)
+    x_positions = list(range(n))
+
+    # Left: Bar chart of weights for each sorted y value
+    fig.add_trace(go.Bar(
+        x=x_positions, y=weights_sorted,
+        marker_color='steelblue',
+        text=[f'{w:.3f}' for w in weights_sorted],
+        textposition='outside',
+        name='Weights',
+        showlegend=False
+    ), row=1, col=1)
+
+    # Right: Cumulative weight line
+    fig.add_trace(go.Scatter(
+        x=x_positions, y=cumsum_norm,
+        mode='lines+markers',
+        line=dict(color='green', width=2),
+        marker=dict(size=8, color='green'),
+        name='Cumulative',
+        showlegend=False
+    ), row=1, col=2)
+
+    # 0.5 threshold line
+    fig.add_hline(y=0.5, line=dict(color='red', dash='dash', width=2), row=1, col=2)
+
+    # Find crossing point
+    idx = np.searchsorted(cumsum_norm, 0.5)
+    if 0 < idx < len(cumsum_norm):
+        # Interpolation point
+        c_prev = cumsum_norm[idx - 1]
+        c_curr = cumsum_norm[idx]
+        if c_curr > c_prev:
+            alpha = (0.5 - c_prev) / (c_curr - c_prev)
+            x_cross = idx - 1 + alpha
+            y_cross = 0.5
+            fig.add_trace(go.Scatter(
+                x=[x_cross], y=[y_cross],
+                mode='markers',
+                marker=dict(size=14, color='red', symbol='x'),
+                name='Median Point',
+                showlegend=False
+            ), row=1, col=2)
+
+    fig.update_layout(
+        height=300,
+        margin=dict(l=50, r=30, t=60, b=40)
+    )
+
+    # X-axis labels as y values
+    fig.update_xaxes(
+        tickmode='array',
+        tickvals=x_positions,
+        ticktext=[f'{y:.2f}' for y in y_sorted],
+        title_text='y (sorted)',
+        row=1, col=1
+    )
+    fig.update_xaxes(
+        tickmode='array',
+        tickvals=x_positions,
+        ticktext=[f'{y:.2f}' for y in y_sorted],
+        title_text='y (sorted)',
+        row=1, col=2
+    )
+    fig.update_yaxes(title_text='Weight', row=1, col=1)
+    fig.update_yaxes(title_text='Cumulative Weight', row=1, col=2)
+
+    return fig
+
+
+def compute_example_walkthrough(t, y, t_i, h, idx_i):
+    """Compute and return all intermediate values for display."""
+    # Step 1: Compute scaled distances
+    u = (t - t_i) / h
+
+    # Step 2: Compute kernel weights
+    weights = 0.75 * (1 - u**2) * (np.abs(u) <= 1)
+
+    # Step 3: Sort by y values
+    sorted_indices = np.argsort(y)
+    y_sorted = y[sorted_indices]
+    weights_sorted = weights[sorted_indices]
+    u_sorted = u[sorted_indices]
+    t_sorted = t[sorted_indices]
+
+    # Step 4: Cumulative normalized weights
+    total_weight = np.sum(weights_sorted)
+    if total_weight > 0:
+        cumsum_norm = np.cumsum(weights_sorted) / total_weight
+    else:
+        cumsum_norm = np.zeros_like(weights_sorted)
+
+    # Step 5: Find median via 0.5 crossing
+    idx = np.searchsorted(cumsum_norm, 0.5)
+    if idx >= len(y_sorted):
+        median_result = y_sorted[-1]
+        alpha = 1.0
+    elif idx == 0:
+        median_result = y_sorted[0]
+        alpha = 0.0
+    else:
+        c_prev = cumsum_norm[idx - 1]
+        c_curr = cumsum_norm[idx]
+        if c_curr > c_prev:
+            alpha = (0.5 - c_prev) / (c_curr - c_prev)
+        else:
+            alpha = 0.5
+        alpha = np.clip(alpha, 0.0, 1.0)
+        median_result = y_sorted[idx - 1] + alpha * (y_sorted[idx] - y_sorted[idx - 1])
+
+    return {
+        't': t,
+        'y': y,
+        't_i': t_i,
+        'h': h,
+        'u': u,
+        'weights': weights,
+        'sorted_indices': sorted_indices,
+        'y_sorted': y_sorted,
+        'weights_sorted': weights_sorted,
+        'u_sorted': u_sorted,
+        't_sorted': t_sorted,
+        'cumsum_norm': cumsum_norm,
+        'median_idx': idx,
+        'alpha': alpha,
+        'median_result': median_result,
+        'total_weight': total_weight
+    }
+
+
+def render_computation_tab():
+    """Render the 'How It Works' tab with detailed computation explanation."""
+
+    st.header("How the EPA Local Median Smoother Works")
+
+    st.markdown("""
+    This tab provides an **ultra-detailed** walkthrough of how the EPA kernel-weighted
+    local median smoother computes the smoothed signal. We cover:
+    1. The algorithm step-by-step
+    2. A numerical worked example
+    3. Visual concept diagrams
+    4. Key insights and takeaways
+    """)
+
+    # ========== SECTION 1: Algorithm Walkthrough ==========
+    with st.expander("1. Algorithm Walkthrough", expanded=True):
+        st.markdown("### 1.1 High-Level Overview")
+
+        st.code("""
+Input:  t[1..n]     - time array (equally or unequally spaced)
+        y[1..n]     - signal values
+        h           - bandwidth (kernel window half-width)
+Output: y_smooth[1..n] - smoothed signal
+
+For each point i from 1 to n:
+    1. Compute scaled distances: u[j] = (t[j] - t[i]) / h  for all j
+    2. Apply Epanechnikov kernel: w[j] = K(u[j])
+    3. Compute weighted median: y_smooth[i] = WeightedMedian(y, w)
+Return y_smooth
+        """, language="text")
+
+        st.markdown("### 1.2 Detailed Pseudocode with Comments")
+
+        st.code("""
+function epa_local_median(t, y, h):
+    n = length(t)
+    y_smooth = zeros(n)
+
+    for i = 1 to n:
+        # ---- Step 1: Compute scaled distances ----
+        # For each data point j, compute how far it is from t[i]
+        # scaled by the bandwidth h
+        for j = 1 to n:
+            u[j] = (t[j] - t[i]) / h
+
+        # ---- Step 2: Apply Epanechnikov kernel ----
+        # K(u) = 0.75 * (1 - u^2)  if |u| <= 1
+        # K(u) = 0                 otherwise
+        for j = 1 to n:
+            if |u[j]| <= 1:
+                w[j] = 0.75 * (1 - u[j]^2)
+            else:
+                w[j] = 0    # Outside kernel support
+
+        # ---- Step 3: Compute weighted median ----
+        y_smooth[i] = weighted_median(y, w)
+
+    return y_smooth
+        """, language="text")
+
+        st.markdown("### 1.3 Weighted Median Algorithm")
+
+        st.markdown("""
+        The weighted median is the value $m$ that minimizes:
+        """)
+        st.latex(r"\sum_{j=1}^{n} w_j \cdot |y_j - m|")
+
+        st.markdown("""
+        **Computation via cumulative weights:**
+        """)
+
+        st.code("""
+function weighted_median(y, w):
+    # ---- Step 1: Sort by y values ----
+    indices = argsort(y)           # Get indices that would sort y
+    y_sorted = y[indices]          # Sorted y values
+    w_sorted = w[indices]          # Weights in same order
+
+    # ---- Step 2: Normalize and cumulate weights ----
+    total = sum(w_sorted)
+    if total == 0:
+        return median(y)           # Fallback to unweighted
+
+    cumsum = cumulative_sum(w_sorted) / total
+    # cumsum[k] = (w_1 + w_2 + ... + w_k) / total
+
+    # ---- Step 3: Find 0.5 crossing point ----
+    # Weighted median is where cumulative weight first reaches 0.5
+    k = first index where cumsum[k] >= 0.5
+
+    # ---- Step 4: Linear interpolation for smooth output ----
+    if k == 0:
+        return y_sorted[0]
+    else:
+        C_prev = cumsum[k-1]
+        C_curr = cumsum[k]
+        alpha = (0.5 - C_prev) / (C_curr - C_prev)
+        return y_sorted[k-1] + alpha * (y_sorted[k] - y_sorted[k-1])
+        """, language="text")
+
+        st.markdown("### 1.4 Complexity Analysis")
+
+        st.markdown("""
+        | Operation | Cost per point | Total |
+        |-----------|----------------|-------|
+        | Distance computation | O(n) | O(n^2) |
+        | Kernel evaluation | O(n) | O(n^2) |
+        | Sorting for median | O(n log n) | O(n^2 log n) |
+        | Cumulative sum | O(n) | O(n^2) |
+        | **Overall** | **O(n log n)** | **O(n^2 log n)** |
+
+        For n=2000 points, this is approximately 2000 * 2000 * 11 = 44 million operations.
+        In practice, we can optimize by only considering points where |u| <= 1 (about 2h/range * n points).
+        """)
+
+    # ========== SECTION 2: Numerical Worked Example ==========
+    with st.expander("2. Numerical Worked Example", expanded=True):
+        st.markdown("""
+        ### Setup
+        We use a small example with **n=10 points** for clarity.
+        """)
+
+        # Create example data
+        np.random.seed(42)
+        t_example = np.linspace(0, 0.9, 10)
+        y_clean_example = np.sin(2 * np.pi * t_example)
+        y_example = y_clean_example + 0.1 * np.random.randn(10)
+        y_example[5] = 3.0  # Inject outlier at t=0.5
+        h_example = 0.25
+
+        # Display setup
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Parameters:**")
+            st.markdown(f"- n = 10 points")
+            st.markdown(f"- t = [0.0, 0.1, 0.2, ..., 0.9]")
+            st.markdown(f"- h = {h_example} (bandwidth)")
+            st.markdown(f"- **Outlier injected at t=0.5** (y=3.0)")
+
+        with col2:
+            st.markdown("**Data:**")
+            data_df = pd.DataFrame({
+                'j': range(10),
+                't_j': [f'{t:.1f}' for t in t_example],
+                'y_j': [f'{y:.3f}' for y in y_example],
+                'Note': ['', '', '', '', '', 'OUTLIER', '', '', '', '']
+            })
+            st.dataframe(data_df, hide_index=True, height=200)
+
+        st.markdown("---")
+
+        # Point A: t_i = 0.0 (boundary)
+        st.markdown("### Point A: Evaluation at t_i = 0.0 (Left Boundary)")
+
+        result_A = compute_example_walkthrough(t_example, y_example, 0.0, h_example, 0)
+
+        st.markdown(f"""
+        **Step 1: Identify neighbors in window** [t_i - h, t_i + h] = [-0.25, 0.25]
+
+        Points in window: t = 0.0, 0.1, 0.2 (indices 0, 1, 2)
+        """)
+
+        # Show computation table for Point A
+        in_window_A = np.abs(result_A['u']) <= 1
+        table_A = pd.DataFrame({
+            'j': range(10),
+            't_j': [f'{t:.1f}' for t in t_example],
+            'y_j': [f'{y:.3f}' for y in y_example],
+            'u_j': [f'{u:.2f}' for u in result_A['u']],
+            'In Window': ['Yes' if iw else 'No' for iw in in_window_A],
+            'w_j = K(u_j)': [f'{w:.4f}' for w in result_A['weights']]
+        })
+        st.dataframe(table_A, hide_index=True)
+
+        st.markdown("**Step 2: Sort by y values and compute cumulative weights**")
+
+        # Only show points with non-zero weights for clarity
+        active_idx = result_A['weights'] > 0
+        n_active = np.sum(active_idx)
+
+        sort_table_A = pd.DataFrame({
+            'Rank': range(1, n_active + 1),
+            'y_(k)': [f'{y:.3f}' for y in result_A['y_sorted'][result_A['weights_sorted'] > 0]],
+            'w_(k)': [f'{w:.4f}' for w in result_A['weights_sorted'][result_A['weights_sorted'] > 0]],
+            'C_k (cumsum)': [f'{c:.4f}' for c in result_A['cumsum_norm'][result_A['weights_sorted'] > 0]]
+        })
+        st.dataframe(sort_table_A, hide_index=True)
+
+        st.markdown(f"""
+        **Step 3: Find 0.5 crossing**
+
+        - Looking for first C_k >= 0.5
+        - Interpolate between adjacent values
+        - **Result: y_smooth[0] = {result_A['median_result']:.4f}**
+        """)
+
+        # Visual for Point A
+        fig_A = create_kernel_window_figure(t_example, y_example, 0.0, h_example, 0)
+        st.plotly_chart(fig_A, use_container_width=True)
+
+        st.markdown("---")
+
+        # Point B: t_i = 0.5 (with outlier)
+        st.markdown("### Point B: Evaluation at t_i = 0.5 (Interior with Outlier)")
+
+        result_B = compute_example_walkthrough(t_example, y_example, 0.5, h_example, 5)
+
+        st.markdown(f"""
+        **Step 1: Identify neighbors in window** [t_i - h, t_i + h] = [0.25, 0.75]
+
+        Points in window: t = 0.3, 0.4, 0.5, 0.6, 0.7 (indices 3, 4, 5, 6, 7)
+
+        **Note:** The outlier at t=0.5 (y=3.0) is in the window, but watch how it gets handled!
+        """)
+
+        in_window_B = np.abs(result_B['u']) <= 1
+        table_B = pd.DataFrame({
+            'j': range(10),
+            't_j': [f'{t:.1f}' for t in t_example],
+            'y_j': [f'{y:.3f}' for y in y_example],
+            'u_j': [f'{u:.2f}' for u in result_B['u']],
+            'In Window': ['Yes' if iw else 'No' for iw in in_window_B],
+            'w_j': [f'{w:.4f}' for w in result_B['weights']],
+            'Note': ['', '', '', '', '', 'OUTLIER', '', '', '', '']
+        })
+        st.dataframe(table_B, hide_index=True)
+
+        st.markdown("**Step 2: Sort by y values**")
+
+        active_B = result_B['weights_sorted'] > 0
+        sort_table_B = pd.DataFrame({
+            'Rank': range(1, np.sum(active_B) + 1),
+            'y_(k)': [f'{y:.3f}' for y in result_B['y_sorted'][active_B]],
+            'w_(k)': [f'{w:.4f}' for w in result_B['weights_sorted'][active_B]],
+            'C_k': [f'{c:.4f}' for c in result_B['cumsum_norm'][active_B]]
+        })
+        st.dataframe(sort_table_B, hide_index=True)
+
+        st.markdown(f"""
+        **Step 3: Observe robustness**
+
+        - The outlier y=3.0 is at the **top** after sorting
+        - Its weight is added last to the cumulative sum
+        - The 0.5 crossing happens **before** reaching the outlier!
+        - **Result: y_smooth[5] = {result_B['median_result']:.4f}**
+
+        The outlier has **minimal influence** on the weighted median!
+        """)
+
+        # Visual for Point B
+        fig_B = create_kernel_window_figure(t_example, y_example, 0.5, h_example, 5)
+        st.plotly_chart(fig_B, use_container_width=True)
+
+        # Weighted median visualization
+        fig_wm_B = create_weighted_median_figure(
+            result_B['y_sorted'][active_B],
+            result_B['weights_sorted'][active_B],
+            result_B['cumsum_norm'][active_B]
+        )
+        st.plotly_chart(fig_wm_B, use_container_width=True)
+
+        st.markdown("---")
+
+        # Point C: t_i = 0.9 (right boundary)
+        st.markdown("### Point C: Evaluation at t_i = 0.9 (Right Boundary)")
+
+        result_C = compute_example_walkthrough(t_example, y_example, 0.9, h_example, 9)
+
+        st.markdown(f"""
+        **Step 1: Identify neighbors in window** [t_i - h, t_i + h] = [0.65, 1.15]
+
+        Points in window: t = 0.7, 0.8, 0.9 (indices 7, 8, 9)
+
+        **Note:** Asymmetric window - fewer neighbors on the right side (boundary effect)
+        """)
+
+        in_window_C = np.abs(result_C['u']) <= 1
+        table_C = pd.DataFrame({
+            'j': range(10),
+            't_j': [f'{t:.1f}' for t in t_example],
+            'y_j': [f'{y:.3f}' for y in y_example],
+            'u_j': [f'{u:.2f}' for u in result_C['u']],
+            'In Window': ['Yes' if iw else 'No' for iw in in_window_C],
+            'w_j': [f'{w:.4f}' for w in result_C['weights']]
+        })
+        st.dataframe(table_C, hide_index=True)
+
+        active_C = result_C['weights_sorted'] > 0
+        st.markdown(f"""
+        **Result: y_smooth[9] = {result_C['median_result']:.4f}**
+
+        Boundary points have fewer neighbors but the algorithm handles this naturally.
+        """)
+
+        fig_C = create_kernel_window_figure(t_example, y_example, 0.9, h_example, 9)
+        st.plotly_chart(fig_C, use_container_width=True)
+
+    # ========== SECTION 3: Visual Concept Diagrams ==========
+    with st.expander("3. Visual Concept Diagrams", expanded=True):
+        st.markdown("### Diagram 1: The Sliding Window Concept")
+
+        st.markdown("""
+        As we compute the smoothed value at each point t_i, we "slide" a kernel window
+        across the signal. The window extends from t_i - h to t_i + h.
+        """)
+
+        # Create sliding window animation as static frames
+        st.markdown("**Window positions at different evaluation points:**")
+
+        frame_positions = [0.1, 0.3, 0.5, 0.7, 0.9]
+        frame_indices = [1, 3, 5, 7, 9]
+
+        cols = st.columns(len(frame_positions))
+        for i, (t_pos, idx) in enumerate(zip(frame_positions, frame_indices)):
+            with cols[i]:
+                st.markdown(f"**t_i = {t_pos}**")
+
+                # Mini visualization
+                import plotly.graph_objects as go
+                fig_mini = go.Figure()
+
+                # Signal
+                fig_mini.add_trace(go.Scatter(
+                    x=t_example, y=y_example,
+                    mode='lines+markers',
+                    marker=dict(size=6, color='gray'),
+                    line=dict(color='gray', width=1),
+                    showlegend=False
+                ))
+
+                # Window region (shaded)
+                u = (t_example - t_pos) / h_example
+                in_win = np.abs(u) <= 1
+                fig_mini.add_vrect(
+                    x0=max(0, t_pos - h_example),
+                    x1=min(0.9, t_pos + h_example),
+                    fillcolor='rgba(0,100,200,0.2)',
+                    line_width=0
+                )
+
+                # Current point
+                fig_mini.add_trace(go.Scatter(
+                    x=[t_pos], y=[y_example[idx]],
+                    mode='markers',
+                    marker=dict(size=12, color='red', symbol='star'),
+                    showlegend=False
+                ))
+
+                fig_mini.update_layout(
+                    height=200,
+                    margin=dict(l=20, r=20, t=20, b=20),
+                    xaxis=dict(range=[-0.05, 0.95]),
+                    yaxis=dict(range=[-1.5, 3.5])
+                )
+
+                st.plotly_chart(fig_mini, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### Diagram 2: Kernel Weight Distribution")
+
+        st.markdown("""
+        The Epanechnikov kernel assigns weights based on distance from t_i:
+        - **Center (u=0):** Maximum weight K(0) = 0.75
+        - **Edge (|u|=1):** Zero weight K(+/-1) = 0
+        - **Parabolic decay:** Smooth transition between center and edge
+        """)
+
+        # Plot kernel shape
+        u_kernel = np.linspace(-1.5, 1.5, 200)
+        k_values = 0.75 * (1 - u_kernel**2) * (np.abs(u_kernel) <= 1)
+
+        fig_kernel = go.Figure()
+        fig_kernel.add_trace(go.Scatter(
+            x=u_kernel, y=k_values,
+            mode='lines',
+            line=dict(color='steelblue', width=3),
+            fill='tozeroy',
+            fillcolor='rgba(70,130,180,0.3)',
+            name='K(u)'
+        ))
+
+        fig_kernel.add_vline(x=-1, line=dict(color='red', dash='dash'))
+        fig_kernel.add_vline(x=1, line=dict(color='red', dash='dash'))
+
+        fig_kernel.update_layout(
+            height=300,
+            title=dict(text='Epanechnikov Kernel K(u) = 0.75(1-u^2)', x=0.5),
+            xaxis_title='Scaled distance u = (t - t_i) / h',
+            yaxis_title='Weight K(u)',
+            margin=dict(l=50, r=30, t=60, b=40)
+        )
+
+        st.plotly_chart(fig_kernel, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### Diagram 3: Complete Smoothing Pass")
+
+        st.markdown("""
+        The final smoothed signal is computed by applying the weighted median
+        at every point along the signal.
+        """)
+
+        # Compute full smoothed signal
+        from smoothers import epa_local_median
+        y_smooth_example = epa_local_median(t_example, y_example, h_example)
+
+        fig_full = go.Figure()
+
+        # Original with outlier
+        fig_full.add_trace(go.Scatter(
+            x=t_example, y=y_example,
+            mode='lines+markers',
+            marker=dict(size=10, color='gray'),
+            line=dict(color='gray', width=1, dash='dash'),
+            name='Original (with outlier)'
+        ))
+
+        # Highlight outlier
+        fig_full.add_trace(go.Scatter(
+            x=[0.5], y=[3.0],
+            mode='markers',
+            marker=dict(size=14, color='red', symbol='x'),
+            name='Outlier'
+        ))
+
+        # Smoothed result
+        fig_full.add_trace(go.Scatter(
+            x=t_example, y=y_smooth_example,
+            mode='lines+markers',
+            marker=dict(size=10, color='green'),
+            line=dict(color='green', width=2),
+            name='Smoothed (EPA Local Median)'
+        ))
+
+        # Clean signal for reference
+        fig_full.add_trace(go.Scatter(
+            x=t_example, y=y_clean_example,
+            mode='lines',
+            line=dict(color='blue', width=2, dash='dot'),
+            name='Clean Signal (ground truth)'
+        ))
+
+        fig_full.update_layout(
+            height=400,
+            title=dict(text='Complete Smoothing Result', x=0.5),
+            xaxis_title='t',
+            yaxis_title='y',
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='center', x=0.5),
+            margin=dict(l=50, r=30, t=80, b=40)
+        )
+
+        st.plotly_chart(fig_full, use_container_width=True)
+
+        st.success(f"""
+        **Observation:** The smoothed curve closely follows the clean signal
+        and is NOT pulled toward the outlier at t=0.5. This demonstrates the
+        robustness of the weighted median approach!
+        """)
+
+    # ========== SECTION 4: Key Insights ==========
+    with st.expander("4. Key Insights", expanded=True):
+        st.markdown("### Understanding the Method")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.info("""
+            **Why Epanechnikov Kernel?**
+
+            - AMISE-optimal: minimizes mean integrated squared error
+            - Compact support: K(u) = 0 for |u| > 1
+            - Computational efficiency: only process nearby points
+            - Smooth parabolic shape: no discontinuities in derivatives
+            """)
+
+            st.warning("""
+            **Bandwidth Trade-off**
+
+            - **Large h:** More smoothing, captures global trends,
+              may miss local features
+            - **Small h:** Less smoothing, captures details,
+              may be noisy
+            - **Rule of thumb:** h scales as n^(-1/5) for optimal MSE
+            """)
+
+        with col2:
+            st.success("""
+            **Why Weighted Median?**
+
+            - Breakdown point = 50%: up to half the data can be
+              corrupted without affecting the estimate unboundedly
+            - Robust to outliers: outlier magnitude doesn't matter
+            - Influence function bounded: IF(x) = sign(x - median)
+            """)
+
+            st.info("""
+            **Why Linear Interpolation?**
+
+            - Eliminates step artifacts in smooth signals
+            - Produces continuous output even with discrete inputs
+            - Exact at the 0.5 cumulative weight crossing
+            - Makes EMD iterations more stable
+            """)
+
+        st.markdown("---")
+        st.markdown("### Formula Summary")
+
+        st.latex(r"""
+        \text{Scaled distance: } u_j = \frac{t_j - t_i}{h}
+        """)
+
+        st.latex(r"""
+        \text{Epanechnikov kernel: } K(u) = \frac{3}{4}(1 - u^2) \cdot \mathbf{1}_{|u| \leq 1}
+        """)
+
+        st.latex(r"""
+        \text{Weighted median: } \tilde{m}(t_i) = \arg\min_m \sum_{j=1}^{n} |y_j - m| \cdot K\left(\frac{t_j - t_i}{h}\right)
+        """)
+
+        st.latex(r"""
+        \text{Cumulative weight: } C_k = \frac{\sum_{j=1}^{k} w_{(j)}}{\sum_{j=1}^{n} w_j}
+        """)
+
+        st.latex(r"""
+        \text{Linear interpolation: } \tilde{m} = y_{(k-1)} + \frac{0.5 - C_{k-1}}{C_k - C_{k-1}} (y_{(k)} - y_{(k-1)})
+        """)
 
 
 def render_theory_tab():
@@ -825,6 +1566,17 @@ def main():
         help="Frequency chirp coefficient"
     )
 
+    n_points_options = [500, 1000, 1500, 2000, 3000, 4000]
+    n_points = st.sidebar.select_slider(
+        "n (signal points)",
+        options=n_points_options,
+        value=2000,
+        help="Number of time points. Higher = more detail but slower"
+    )
+
+    if n_points != 2000:
+        st.sidebar.warning("n ≠ 2000: Computing on-demand (slower)")
+
     st.sidebar.markdown("---")
 
     # Mathematical formulas section
@@ -856,7 +1608,7 @@ def main():
 
     # Generate signal
     t, y_clean, y_noisy = generate_amfm_signal(
-        n_points=2000,
+        n_points=n_points,
         am_depth=am_depth,
         base_freq=float(base_freq),
         chirp_rate=float(chirp_rate),
@@ -868,8 +1620,8 @@ def main():
     st.title("EMD Local Median Smoother")
     st.markdown("**Empirical Mode Decomposition with Kernel-Weighted Local Median**")
 
-    # Method tabs (including Theory & Math)
-    tabs = st.tabs(["Local Median", "Median", "Average", "Theory & Math"])
+    # Method tabs (including Theory & Math and How It Works)
+    tabs = st.tabs(["Local Median", "Median", "Average", "Theory & Math", "How It Works"])
 
     methods = ['local_median', 'median', 'average']
     method_names = ['Local Median (EPA Weighted)', 'Median (Unweighted)', 'Average (NW Mean)']
@@ -925,6 +1677,10 @@ def main():
     # Theory & Math Tab (4th tab)
     with tabs[3]:
         render_theory_tab()
+
+    # How It Works Tab (5th tab)
+    with tabs[4]:
+        render_computation_tab()
 
     # Metrics comparison table
     st.markdown("---")
