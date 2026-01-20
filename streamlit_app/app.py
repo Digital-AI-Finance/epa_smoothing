@@ -40,42 +40,79 @@ st.set_page_config(
 
 
 @st.cache_resource
-def load_precomputed_data() -> Optional[Dict[str, Any]]:
+def load_precomputed_data() -> Optional[Dict[int, Dict[str, Any]]]:
     """Load pre-computed data from split gzipped files.
 
-    Supports both new split format (precomputed_data/ directory with .pkl.gz files)
-    and legacy single file format (precomputed_data.pkl) for backwards compatibility.
+    Returns
+    -------
+    Dict[int, Dict[str, Any]] or None
+        Dictionary keyed by n_points (e.g., {2000: {...}, 4000: {...}})
+        Returns None if no precomputed data found.
+
+    Supports:
+    - New multi-n structure: precomputed_data/n_2000/, precomputed_data/n_4000/
+    - Legacy flat structure: precomputed_data/ with *.pkl.gz (treated as n=2000)
+    - Legacy single file: precomputed_data.pkl (treated as n=2000)
     """
     base_dir = Path(__file__).parent
     data_dir = base_dir / 'precomputed_data'
+    all_data = {}
 
-    # Try new split format first
     if data_dir.exists():
-        metadata_path = data_dir / 'metadata.pkl.gz'
-        if metadata_path.exists():
-            # Load metadata
-            with gzip.open(metadata_path, 'rb') as f:
+        # Try new multi-n_points structure: precomputed_data/n_XXXX/
+        for n_subdir in data_dir.iterdir():
+            if n_subdir.is_dir() and n_subdir.name.startswith('n_'):
+                try:
+                    n_points = int(n_subdir.name.split('_')[1])
+                except (ValueError, IndexError):
+                    continue
+
+                metadata_path = n_subdir / 'metadata.pkl.gz'
+                if metadata_path.exists():
+                    with gzip.open(metadata_path, 'rb') as f:
+                        data = pickle.load(f)
+
+                    # Load and merge all sigma files
+                    data['results'] = {}
+                    for sigma in data.get('sigma_values', []):
+                        filename = f'sigma_{sigma:.2f}.pkl.gz'
+                        filepath = n_subdir / filename
+                        if filepath.exists():
+                            with gzip.open(filepath, 'rb') as f:
+                                data['results'][f'sigma_{sigma}'] = pickle.load(f)
+
+                    if data['results']:
+                        all_data[n_points] = data
+
+        # Fallback: legacy flat structure in precomputed_data/ (treat as n=2000)
+        if not all_data:
+            metadata_path = data_dir / 'metadata.pkl.gz'
+            if metadata_path.exists():
+                with gzip.open(metadata_path, 'rb') as f:
+                    data = pickle.load(f)
+
+                data['results'] = {}
+                for sigma in data.get('sigma_values', []):
+                    filename = f'sigma_{sigma:.2f}.pkl.gz'
+                    filepath = data_dir / filename
+                    if filepath.exists():
+                        with gzip.open(filepath, 'rb') as f:
+                            data['results'][f'sigma_{sigma}'] = pickle.load(f)
+
+                if data['results']:
+                    n_points = data.get('n_points', 2000)
+                    all_data[n_points] = data
+
+    # Final fallback: legacy single file format
+    if not all_data:
+        legacy_path = base_dir / 'precomputed_data.pkl'
+        if legacy_path.exists():
+            with open(legacy_path, 'rb') as f:
                 data = pickle.load(f)
+                n_points = data.get('n_points', 2000)
+                all_data[n_points] = data
 
-            # Load and merge all sigma files
-            data['results'] = {}
-            for sigma in data['sigma_values']:
-                filename = f'sigma_{sigma:.2f}.pkl.gz'
-                filepath = data_dir / filename
-                if filepath.exists():
-                    with gzip.open(filepath, 'rb') as f:
-                        data['results'][f'sigma_{sigma}'] = pickle.load(f)
-
-            if data['results']:
-                return data
-
-    # Fall back to legacy single file format
-    legacy_path = base_dir / 'precomputed_data.pkl'
-    if legacy_path.exists():
-        with open(legacy_path, 'rb') as f:
-            return pickle.load(f)
-
-    return None
+    return all_data if all_data else None
 
 
 def find_nearest_grid_value(value: float, grid: list) -> float:
@@ -84,7 +121,7 @@ def find_nearest_grid_value(value: float, grid: list) -> float:
 
 
 def get_data_from_cache_or_compute(
-    precomputed: Optional[Dict],
+    precomputed: Optional[Dict[int, Dict]],
     t: np.ndarray,
     y_noisy: np.ndarray,
     y_clean: np.ndarray,
@@ -97,24 +134,30 @@ def get_data_from_cache_or_compute(
 ) -> Dict[str, Any]:
     """Get data from cache or compute on-demand.
 
-    Skips cache if n_points differs from precomputed value (typically 2000).
+    Parameters
+    ----------
+    precomputed : Dict[int, Dict] or None
+        Multi-n_points cache: {2000: {...}, 4000: {...}}
+
+    Returns dict with 'from_cache': True if cache hit, False otherwise.
     """
+    cache_data = None
 
-    # Only use cache if n_points matches precomputed n_points
-    precomputed_n_points = precomputed.get('n_points', 2000) if precomputed else 2000
-    use_cache = precomputed is not None and n_points == precomputed_n_points
+    # Check if we have cached data for this n_points
+    if precomputed is not None and n_points in precomputed:
+        cache_data = precomputed[n_points]
 
-    if use_cache:
+    if cache_data is not None:
         # Find nearest grid values
-        h0_grid = find_nearest_grid_value(h0, precomputed['h0_values'])
-        sigma_grid = find_nearest_grid_value(sigma, precomputed['sigma_values'])
-        decay_grid = find_nearest_grid_value(decay, precomputed['decay_values'])
+        h0_grid = find_nearest_grid_value(h0, cache_data['h0_values'])
+        sigma_grid = find_nearest_grid_value(sigma, cache_data['sigma_values'])
+        decay_grid = find_nearest_grid_value(decay, cache_data['decay_values'])
 
         sigma_key = f"sigma_{sigma_grid}"
         iter_key = f"h0_{h0_grid}_decay_{decay_grid}_{method}"
 
-        if sigma_key in precomputed['results']:
-            sigma_data = precomputed['results'][sigma_key]
+        if sigma_key in cache_data['results']:
+            sigma_data = cache_data['results'][sigma_key]
             if iter_key in sigma_data['iterations']:
                 cached = sigma_data['iterations'][iter_key]
                 return {
@@ -2945,8 +2988,13 @@ def main():
         help="Number of time points. Higher = more detail but slower"
     )
 
-    if n_points != 2000:
-        st.sidebar.warning("n ≠ 2000: Computing on-demand (slower)")
+    # Show which n_points values are cached
+    cached_n_list = sorted(precomputed.keys()) if precomputed else []
+    if cached_n_list:
+        cached_str = ', '.join(map(str, cached_n_list))
+        st.sidebar.caption(f"Cached: n = {cached_str}")
+    if n_points not in cached_n_list:
+        st.sidebar.warning(f"n={n_points} not cached. Computing on-demand.")
 
     st.sidebar.markdown("---")
 
@@ -3019,9 +3067,10 @@ def main():
             if data['from_cache']:
                 st.caption("Using pre-computed data (instant)")
             else:
-                precomputed_n = precomputed.get('n_points', 2000) if precomputed else 2000
-                if n_points != precomputed_n:
-                    st.warning(f"n={n_points} != {precomputed_n}: Computing on-demand (slower)")
+                cached_n_list = sorted(precomputed.keys()) if precomputed else []
+                if n_points not in cached_n_list:
+                    cached_str = ', '.join(map(str, cached_n_list)) if cached_n_list else 'none'
+                    st.warning(f"n={n_points} not cached (cached: {cached_str}). Computing on-demand.")
                 else:
                     st.info(f"Computing {method_name.split('(')[0].strip()} on-demand (not in cache)")
 
