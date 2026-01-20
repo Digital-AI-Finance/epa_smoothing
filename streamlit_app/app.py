@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import matplotlib.pyplot as plt
 import pickle
 import gzip
 from pathlib import Path
@@ -91,11 +92,19 @@ def get_data_from_cache_or_compute(
     sigma: float,
     decay: float,
     k: int,
-    method: str
+    method: str,
+    n_points: int
 ) -> Dict[str, Any]:
-    """Get data from cache or compute on-demand."""
+    """Get data from cache or compute on-demand.
 
-    if precomputed is not None:
+    Skips cache if n_points differs from precomputed value (typically 2000).
+    """
+
+    # Only use cache if n_points matches precomputed n_points
+    precomputed_n_points = precomputed.get('n_points', 2000) if precomputed else 2000
+    use_cache = precomputed is not None and n_points == precomputed_n_points
+
+    if use_cache:
         # Find nearest grid values
         h0_grid = find_nearest_grid_value(h0, precomputed['h0_values'])
         sigma_grid = find_nearest_grid_value(sigma, precomputed['sigma_values'])
@@ -2642,6 +2651,207 @@ def render_implementations_tab(t: np.ndarray, y_noisy: np.ndarray, y_clean: np.n
     """)
 
 
+def render_algorithm_steps_tab(t: np.ndarray, y_noisy: np.ndarray, y_clean: np.ndarray,
+                                h0: float, decay: float, k: int):
+    """Interactive side-by-side EPA vs ionASE algorithm visualization using matplotlib."""
+
+    st.header("Algorithm Steps: EPA vs ionASE")
+
+    st.markdown("""
+    This tab provides an **interactive, step-by-step visualization** of how both EPA and ionASE
+    compute the weighted median at a selected point. Move the slider to explore different points.
+    """)
+
+    h_k = h0 / (decay ** (k - 1))
+    n = len(t)
+
+    # Interactive point selection
+    t_idx = st.slider("Select point index", 0, n-1, n//2, key="algo_steps_idx")
+    t_i = t[t_idx]
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Index", t_idx)
+    with col2:
+        st.metric("t value", f"{t_i:.4f}")
+    with col3:
+        st.metric("Bandwidth h_k", f"{h_k:.4f}")
+
+    # Get detailed computations
+    epa_detail = epa_detailed_computation(t, y_noisy, t_i, h_k)
+    ionase_detail = ionase_detailed_computation(y_noisy, t_idx, h_k)
+
+    # === FIGURE 1: Kernel Window ===
+    st.markdown("### Step 1: Kernel Window Selection")
+    st.markdown("""
+    Both methods select points within a bandwidth-defined window around the target point.
+    **Blue**: EPA window (based on time distance). **Orange**: ionASE window (based on index distance).
+    """)
+
+    fig1, (ax1a, ax1b) = plt.subplots(1, 2, figsize=(12, 4))
+
+    # EPA kernel window (u <= 1 means inside window)
+    in_window_epa = np.abs(epa_detail['u']) <= 1
+    ax1a.plot(t, y_noisy, 'gray', alpha=0.5, lw=1, label='Signal')
+    ax1a.scatter(t[in_window_epa], y_noisy[in_window_epa], c='steelblue', s=30, zorder=3, label='In window')
+    ax1a.scatter(t[~in_window_epa], y_noisy[~in_window_epa], c='lightgray', s=10, zorder=2, alpha=0.5)
+    ax1a.axvline(t_i, color='red', linestyle='--', lw=2, label=f't_i={t_i:.3f}')
+    ax1a.axvline(t_i - h_k, color='orange', linestyle=':', alpha=0.7, label=f'Window edges')
+    ax1a.axvline(t_i + h_k, color='orange', linestyle=':', alpha=0.7)
+    ax1a.set_title(f'EPA: {in_window_epa.sum()} points in window')
+    ax1a.set_xlabel('t')
+    ax1a.set_ylabel('y')
+    ax1a.legend(fontsize=8)
+
+    # ionASE kernel window (mask = weights > 0)
+    in_window_ion = ionase_detail['mask']
+    ax1b.plot(t, y_noisy, 'gray', alpha=0.5, lw=1, label='Signal')
+    ax1b.scatter(t[in_window_ion], y_noisy[in_window_ion], c='darkorange', s=30, zorder=3, label='In window')
+    ax1b.scatter(t[~in_window_ion], y_noisy[~in_window_ion], c='lightgray', s=10, zorder=2, alpha=0.5)
+    ax1b.axvline(t_i, color='red', linestyle='--', lw=2, label=f'idx={t_idx}')
+    ax1b.set_title(f'ionASE: {in_window_ion.sum()} points in window')
+    ax1b.set_xlabel('t')
+    ax1b.set_ylabel('y')
+    ax1b.legend(fontsize=8)
+
+    plt.tight_layout()
+    st.pyplot(fig1)
+    plt.close(fig1)
+
+    # === FIGURE 2: Kernel Weights ===
+    st.markdown("### Step 2: Kernel Weights")
+    st.markdown("""
+    The Epanechnikov kernel assigns higher weights to points closer to the center.
+    K(u) = 0.75(1 - u^2) for |u| <= 1, zero otherwise.
+    """)
+
+    fig2, (ax2a, ax2b) = plt.subplots(1, 2, figsize=(12, 4))
+
+    # EPA weights
+    colors_epa = ['steelblue' if w > 0 else 'lightgray' for w in epa_detail['weights']]
+    ax2a.bar(range(n), epa_detail['weights'], color=colors_epa, alpha=0.7)
+    ax2a.axvline(t_idx, color='red', linestyle='--', lw=2)
+    ax2a.set_title(f'EPA Weights (sum={epa_detail["total_weight"]:.3f})')
+    ax2a.set_xlabel('Index')
+    ax2a.set_ylabel('Weight')
+
+    # ionASE weights
+    colors_ion = ['darkorange' if w > 0 else 'lightgray' for w in ionase_detail['weights']]
+    ax2b.bar(range(n), ionase_detail['weights'], color=colors_ion, alpha=0.7)
+    ax2b.axvline(t_idx, color='red', linestyle='--', lw=2)
+    ax2b.set_title(f'ionASE Weights (sum={ionase_detail["total_weight"]:.3f})')
+    ax2b.set_xlabel('Index')
+    ax2b.set_ylabel('Weight')
+
+    plt.tight_layout()
+    st.pyplot(fig2)
+    plt.close(fig2)
+
+    # === FIGURE 3: Sorted Values with Weights ===
+    st.markdown("### Step 3: Sort by Y Value")
+    st.markdown("""
+    To find the weighted median, we sort points by their y-values and redistribute weights
+    along this sorted order.
+    """)
+
+    fig3, (ax3a, ax3b) = plt.subplots(1, 2, figsize=(12, 4))
+
+    # EPA sorted - only show non-zero weights for clarity
+    active_epa = epa_detail['weights_sorted'] > 0
+    n_active_epa = np.sum(active_epa)
+    if n_active_epa > 0:
+        ax3a.bar(range(n_active_epa), epa_detail['weights_sorted'][active_epa], color='steelblue', alpha=0.7)
+    ax3a.set_title(f'EPA: Weights in Y-Sorted Order ({n_active_epa} active)')
+    ax3a.set_xlabel('Sorted Index')
+    ax3a.set_ylabel('Weight')
+
+    # ionASE sorted (uses x_sorted and w_sorted)
+    n_active_ion = len(ionase_detail['x_sorted'])
+    if n_active_ion > 0:
+        ax3b.bar(range(n_active_ion), ionase_detail['w_sorted'], color='darkorange', alpha=0.7)
+    ax3b.set_title(f'ionASE: Weights in Y-Sorted Order ({n_active_ion} active)')
+    ax3b.set_xlabel('Sorted Index')
+    ax3b.set_ylabel('Weight')
+
+    plt.tight_layout()
+    st.pyplot(fig3)
+    plt.close(fig3)
+
+    # === FIGURE 4: Cumulative Sum & Median Selection ===
+    st.markdown("### Step 4: Cumulative Sum & Median Selection")
+    st.markdown("""
+    The weighted median is found where cumulative weight reaches 0.5.
+    - **EPA**: Uses linear interpolation at the 0.5 crossing for smoother results.
+    - **ionASE**: Selects the exact index where cumsum first exceeds 0.5.
+    """)
+
+    fig4, (ax4a, ax4b) = plt.subplots(1, 2, figsize=(12, 4))
+
+    # EPA cumsum with interpolation
+    active_epa = epa_detail['weights_sorted'] > 0
+    if np.any(active_epa):
+        y_sorted_active = epa_detail['y_sorted'][active_epa]
+        cumsum_active = epa_detail['cumsum_norm'][active_epa]
+        ax4a.plot(y_sorted_active, cumsum_active, 'o-', color='steelblue', markersize=5)
+        ax4a.axhline(0.5, color='red', linestyle='--', lw=1.5, label='0.5 threshold')
+        ax4a.scatter([epa_detail['median_result']], [0.5], color='red', s=150, marker='*', zorder=5, label='Median')
+        ax4a.set_title(f'EPA: Median = {epa_detail["median_result"]:.4f} (interpolated)')
+    else:
+        ax4a.set_title('EPA: No active points')
+    ax4a.set_xlabel('Y Value (sorted)')
+    ax4a.set_ylabel('Cumulative Weight')
+    ax4a.legend(fontsize=8)
+
+    # ionASE cumsum (exact index, uses x_sorted)
+    if len(ionase_detail['x_sorted']) > 0:
+        ax4b.plot(ionase_detail['x_sorted'], ionase_detail['cumsum_norm'], 'o-', color='darkorange', markersize=5)
+        ax4b.axhline(0.5, color='red', linestyle='--', lw=1.5, label='0.5 threshold')
+        ax4b.scatter([ionase_detail['median_result']], [0.5], color='red', s=150, marker='*', zorder=5, label='Median')
+        ax4b.set_title(f'ionASE: Median = {ionase_detail["median_result"]:.4f} (exact index)')
+    else:
+        ax4b.set_title('ionASE: No active points')
+    ax4b.set_xlabel('Y Value (sorted)')
+    ax4b.set_ylabel('Cumulative Weight')
+    ax4b.legend(fontsize=8)
+
+    plt.tight_layout()
+    st.pyplot(fig4)
+    plt.close(fig4)
+
+    # === Results Summary ===
+    st.markdown("### Results Comparison")
+    diff = abs(epa_detail['median_result'] - ionase_detail['median_result'])
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("EPA Result", f"{epa_detail['median_result']:.6f}")
+    with col2:
+        st.metric("ionASE Result", f"{ionase_detail['median_result']:.6f}")
+    with col3:
+        st.metric("Difference", f"{diff:.6f}")
+
+    if diff > 0.001:
+        st.warning(f"Visible difference at this point due to interpolation vs exact index selection.")
+    else:
+        st.success(f"Results nearly identical at this point.")
+
+    # Technical details expander
+    with st.expander("Technical Details", expanded=False):
+        st.markdown(f"""
+        **EPA Details:**
+        - Points in window: {np.sum(epa_detail['weights'] > 0)}
+        - Total weight: {epa_detail['total_weight']:.6f}
+        - Median index in sorted array: {epa_detail['median_idx']}
+        - Interpolation alpha: {epa_detail['alpha']:.4f}
+
+        **ionASE Details:**
+        - Points in window: {np.sum(ionase_detail['mask'])}
+        - Total weight: {ionase_detail['total_weight']:.6f}
+        - Median index in sorted array: {ionase_detail['median_idx']}
+        - No interpolation (exact index selection)
+        """)
+
+
 def main():
     """Main Streamlit app."""
 
@@ -2782,7 +2992,7 @@ def main():
     st.markdown("**Empirical Mode Decomposition with Kernel-Weighted Local Median**")
 
     # Method tabs (including Theory & Math, How It Works, and Implementations)
-    tabs = st.tabs(["Local Median", "Median", "Average", "EPA vs ionASE", "Theory & Math", "How It Works", "Implementations"])
+    tabs = st.tabs(["Local Median", "Median", "Average", "EPA vs ionASE", "Theory & Math", "How It Works", "Implementations", "Algorithm Steps"])
 
     methods = ['local_median', 'median', 'average']
     method_names = ['Local Median (EPA Weighted)', 'Median (Unweighted)', 'Average (NW Mean)']
@@ -2796,7 +3006,7 @@ def main():
             # Get or compute data
             data = get_data_from_cache_or_compute(
                 precomputed, t, y_noisy, y_clean,
-                h0, sigma, decay, k, method
+                h0, sigma, decay, k, method, n_points
             )
 
             all_results[method] = data
@@ -2809,7 +3019,11 @@ def main():
             if data['from_cache']:
                 st.caption("Using pre-computed data (instant)")
             else:
-                st.info(f"Computing {method_name.split('(')[0].strip()} on-demand (not in cache)")
+                precomputed_n = precomputed.get('n_points', 2000) if precomputed else 2000
+                if n_points != precomputed_n:
+                    st.warning(f"n={n_points} != {precomputed_n}: Computing on-demand (slower)")
+                else:
+                    st.info(f"Computing {method_name.split('(')[0].strip()} on-demand (not in cache)")
 
             # Reconstruction Sum Charts (side by side)
             st.markdown("---")
@@ -2850,6 +3064,10 @@ def main():
     # Implementations Tab (7th tab)
     with tabs[6]:
         render_implementations_tab(t, y_noisy, y_clean, h0, decay, k)
+
+    # Algorithm Steps Tab (8th tab)
+    with tabs[7]:
+        render_algorithm_steps_tab(t, y_noisy, y_clean, h0, decay, k)
 
     # Metrics comparison table
     st.markdown("---")
