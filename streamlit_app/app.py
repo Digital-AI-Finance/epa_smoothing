@@ -2980,7 +2980,7 @@ def main():
         help="Frequency chirp coefficient"
     )
 
-    n_points_options = [500, 1000, 1500, 2000, 3000, 4000]
+    n_points_options = [500, 1000, 1500, 2000, 3000, 4000, 10000]
     n_points = st.sidebar.select_slider(
         "n (signal points)",
         options=n_points_options,

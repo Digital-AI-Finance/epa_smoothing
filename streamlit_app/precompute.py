@@ -237,7 +237,7 @@ def save_split_precomputed_data(data: Dict[str, Any], output_dir: Path) -> None:
     print(f"Output directory: {n_dir}")
 
 
-SUPPORTED_N_POINTS = [2000, 4000]
+SUPPORTED_N_POINTS = [2000, 4000, 10000]
 
 
 def main():
